@@ -89,9 +89,48 @@ Item {
     }
 
     function toggleApp(key) {
-        desktop.setOpen(key, !desktop.openState[key])
-        if (desktop.openState[key])
+        var willOpen = !desktop.openState[key]
+        desktop.setOpen(key, willOpen)
+        desktop.setMinimized(key, false)
+        if (willOpen)
             desktop.raise(key)
+    }
+
+    // --- minimizzazione ------------------------------------------------------
+    // Una finestra ridotta a icona resta aperta (e conserva il suo stato), ma
+    // sparisce dal desktop. Torna cliccando la sua icona nella dock.
+    property var minimizedState: ({
+        "browser": false,
+        "code": false,
+        "documenti": false,
+        "chat": false,
+        "cestino": false,
+        "missing": false,
+        "calc": false,
+        "note": false
+    })
+
+    function setMinimized(key, value) {
+        if (desktop.minimizedState[key] === value)
+            return
+        var next = {}
+        for (var k in desktop.minimizedState)
+            next[k] = desktop.minimizedState[k]
+        next[key] = value
+        desktop.minimizedState = next
+    }
+
+    // Alt+Tab: porta in cima la finestra visibile piu' in basso.
+    function cycleWindow() {
+        var visibleOnes = []
+        for (var i = 0; i < desktop.stack.length; i++) {
+            var key = desktop.stack[i]
+            if (desktop.openState[key] && !desktop.minimizedState[key])
+                visibleOnes.push(key)
+        }
+        if (visibleOnes.length < 2)
+            return
+        desktop.raise(visibleOnes[0])
     }
 
     // --- ordine di sovrapposizione delle finestre ----------------------------
@@ -138,6 +177,18 @@ Item {
             desktop.missingKey = entry.external
             desktop.setOpen("missing", true)
             desktop.raise("missing")
+            return
+        }
+
+        // Applicazione interna gia' aperta: se e' ridotta a icona si
+        // ripristina, altrimenti la si riduce a icona.
+        if (desktop.openState[entry.key]) {
+            if (desktop.minimizedState[entry.key]) {
+                desktop.setMinimized(entry.key, false)
+                desktop.raise(entry.key)
+            } else {
+                desktop.setMinimized(entry.key, true)
+            }
             return
         }
 
@@ -275,6 +326,8 @@ Item {
         opened: desktop.openState.missing
         onCloseRequested: desktop.setOpen("missing", false)
         onRaised: desktop.raise("missing")
+        minimized: desktop.minimizedState["missing"]
+        onMinimizeRequested: desktop.setMinimized("missing", true)
 
         content: Component {
             MissingApp {
@@ -295,6 +348,8 @@ Item {
         opened: desktop.openState.documenti
         onCloseRequested: desktop.setOpen("documenti", false)
         onRaised: desktop.raise("documenti")
+        minimized: desktop.minimizedState["documenti"]
+        onMinimizeRequested: desktop.setMinimized("documenti", true)
 
         onOpenedChanged: {
             if (opened)
@@ -316,6 +371,8 @@ Item {
         opened: desktop.openState.chat
         onCloseRequested: desktop.setOpen("chat", false)
         onRaised: desktop.raise("chat")
+        minimized: desktop.minimizedState["chat"]
+        onMinimizeRequested: desktop.setMinimized("chat", true)
 
         content: Component { Chat2D { } }
     }
@@ -332,6 +389,8 @@ Item {
         opened: desktop.openState.cestino
         onCloseRequested: desktop.setOpen("cestino", false)
         onRaised: desktop.raise("cestino")
+        minimized: desktop.minimizedState["cestino"]
+        onMinimizeRequested: desktop.setMinimized("cestino", true)
 
         content: Component { TrashBin { } }
     }
@@ -348,6 +407,8 @@ Item {
         opened: desktop.openState.calc
         onCloseRequested: desktop.setOpen("calc", false)
         onRaised: desktop.raise("calc")
+        minimized: desktop.minimizedState["calc"]
+        onMinimizeRequested: desktop.setMinimized("calc", true)
 
         content: Component { Calculator { } }
     }
@@ -364,6 +425,8 @@ Item {
         opened: desktop.openState.note
         onCloseRequested: desktop.setOpen("note", false)
         onRaised: desktop.raise("note")
+        minimized: desktop.minimizedState["note"]
+        onMinimizeRequested: desktop.setMinimized("note", true)
 
         content: Component { Notes { } }
     }

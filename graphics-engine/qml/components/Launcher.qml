@@ -45,6 +45,9 @@ Item {
                 width: launcher.cellWidth
                 height: launcher.cellHeight
 
+                // Il fumetto deve stare sopra le celle vicine.
+                z: hover.containsMouse ? 20 : 0
+
                 x: shown ? 0 : -70
                 opacity: shown ? 1 : 0
 
@@ -119,7 +122,55 @@ Item {
                     z: 10
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: launcher.activate(index)
+
+                    // Un doppio clic sono due clic ravvicinati: senza questo
+                    // filtro la voce si aprirebbe e si chiuderebbe subito.
+                    property double lastClickAt: 0
+
+                    onClicked: {
+                        var now = Date.now()
+                        if (now - lastClickAt < 400)
+                            return
+                        lastClickAt = now
+                        launcher.activate(index)
+                    }
+                }
+
+                // --- fumetto con il nome dell'applicazione ---
+                Rectangle {
+                    id: tip
+
+                    x: cell.width + 2
+                    y: pod.y - 1
+                    z: 60
+                    visible: hover.containsMouse
+                    width: tipRow.implicitWidth + 20
+                    height: 26
+                    radius: 6
+                    color: "#f70b1b2a"
+                    border.width: 1
+                    border.color: "#55f9b234"
+
+                    Row {
+                        id: tipRow
+                        anchors.centerIn: parent
+                        spacing: 7
+
+                        Text {
+                            text: cell.modelData.glyph
+                            color: cell.modelData.accent || Theme.cyan
+                            font.family: "DejaVu Sans"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        Text {
+                            text: cell.modelData.label
+                            color: Theme.text
+                            font.family: "DejaVu Sans"
+                            font.pixelSize: 10
+                        }
+                    }
                 }
             }
         }

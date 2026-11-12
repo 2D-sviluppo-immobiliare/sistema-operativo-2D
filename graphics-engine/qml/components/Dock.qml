@@ -65,6 +65,9 @@ Rectangle {
                 width: 34
                 height: 34
 
+                // Il fumetto deve stare sopra le icone vicine.
+                z: hover.containsMouse ? 20 : 0
+
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
@@ -96,7 +99,44 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: dock.activate(slot.index)
+
+                    // Due clic ravvicinati valgono uno: evita che l'icona
+                    // apra e chiuda la finestra nello stesso gesto.
+                    property double lastClickAt: 0
+
+                    onClicked: {
+                        var now = Date.now()
+                        if (now - lastClickAt < 400)
+                            return
+                        lastClickAt = now
+                        dock.activate(slot.index)
+                    }
+                }
+
+                // --- fumetto sopra l'icona ---
+                Rectangle {
+                    id: tip
+
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.top
+                    anchors.bottomMargin: 6
+                    z: 60
+                    visible: hover.containsMouse
+                    width: tipText.implicitWidth + 22
+                    height: 24
+                    radius: 6
+                    color: "#f70b1b2a"
+                    border.width: 1
+                    border.color: "#55f9b234"
+
+                    Text {
+                        id: tipText
+                        anchors.centerIn: parent
+                        text: slot.modelData.label
+                        color: Theme.text
+                        font.family: "DejaVu Sans"
+                        font.pixelSize: 9
+                    }
                 }
             }
         }

@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from backend.apps import Apps  # noqa: E402
 from backend.chat import ChatClient  # noqa: E402
 from backend.files import FileBrowser  # noqa: E402
+from backend.network import Network  # noqa: E402
 from backend.trash import TrashModel  # noqa: E402
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -245,6 +246,9 @@ def main() -> int:
 
     chat_client = ChatClient()
     engine.rootContext().setContextProperty("chatClient", chat_client)
+
+    network_info = Network()
+    engine.rootContext().setContextProperty("networkInfo", network_info)
 
     engine.load(QUrl.fromLocalFile(MAIN_QML))
 

@@ -17,6 +17,7 @@ Item {
     property color accent: Theme.gold
     property Component content: null
     property bool opened: true
+    property bool minimized: false
 
     readonly property int minWidth: 300
     readonly property int minHeight: 200
@@ -24,6 +25,7 @@ Item {
 
     signal closeRequested()
     signal raised()
+    signal minimizeRequested()
 
     // --- geometria -----------------------------------------------------------
     // Dimensioni e posizione memorizzate prima della massimizzazione.
@@ -40,9 +42,13 @@ Item {
     property real grabWidth: 0
     property real grabHeight: 0
 
-    opacity: opened ? 1 : 0
-    scale: opened ? 1 : 0.97
-    visible: opened || opacity > 0.01
+    // Una finestra minimizzata sparisce dal desktop ma resta viva: al
+    // ripristino ritrova geometria, stato massimizzato e contenuto.
+    readonly property bool shown: opened && !minimized
+
+    opacity: shown ? 1 : 0
+    scale: shown ? 1 : 0.97
+    visible: shown || opacity > 0.01
 
     Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
     Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
@@ -173,7 +179,7 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: 38
                 anchors.right: parent.right
-                anchors.rightMargin: 96
+                anchors.rightMargin: 128
                 anchors.verticalCenter: parent.verticalCenter
                 text: win.windowTitle
                 color: Theme.text
@@ -189,7 +195,7 @@ Item {
                 id: titleDrag
 
                 anchors.fill: parent
-                anchors.rightMargin: 88
+                anchors.rightMargin: 128
 
                 cursorShape: win.maximized ? Qt.ArrowCursor : Qt.SizeAllCursor
                 enabled: !win.maximized
@@ -216,7 +222,7 @@ Item {
             // clic sul titolo con finestra massimizzata: ripristina
             MouseArea {
                 anchors.fill: parent
-                anchors.rightMargin: 88
+                anchors.rightMargin: 128
                 visible: win.maximized
                 onClicked: {
                     win.raised()
@@ -232,6 +238,36 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 7
             spacing: 6
+
+            Rectangle {
+                id: minimizeButton
+
+                width: 26
+                height: 26
+                radius: 13
+                color: minimizeMouse.containsMouse ? "#1d3a52" : "#1affffff"
+                border.width: 1
+                border.color: minimizeMouse.containsMouse ? "#6fbdbd" : "#20ffffff"
+
+                Behavior on color { ColorAnimation { duration: 120 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    anchors.verticalCenterOffset: -3
+                    text: "\u2013"
+                    color: Theme.text
+                    font.family: "DejaVu Sans"
+                    font.pixelSize: 13
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: minimizeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: win.minimizeRequested()
+                }
+            }
 
             Rectangle {
                 id: maximizeButton

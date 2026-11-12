@@ -12,13 +12,21 @@ Rectangle {
     property int volume: 60
     property var interfaces: []
 
-    readonly property bool online: {
-        for (let i = 0; i < tray.interfaces.length; i++) {
-            if (tray.interfaces[i].up)
-                return true
-        }
-        return false
-    }
+    // --- stato Wi-Fi ---------------------------------------------------------
+    property var wifiNetworks: []
+    property string pendingSsid: ""
+    property bool askingPassword: false
+    property string passwordText: ""
+    property string networkError: ""
+    property bool scanning: false
+
+    readonly property bool online: typeof networkInfo !== "undefined"
+                                   ? networkInfo.online
+                                   : false
+
+    readonly property bool wifiAvailable: typeof networkInfo !== "undefined"
+                                         ? networkInfo.wifiAvailable
+                                         : false
 
     width: row.implicitWidth + 22
     height: 38
@@ -30,12 +38,54 @@ Rectangle {
     function refresh() {
         if (typeof systemInfo === "undefined")
             return
-        tray.interfaces = systemInfo.network()
+        if (typeof networkInfo !== "undefined")
+            tray.interfaces = networkInfo.details()
         tray.volume = systemInfo.volume()
     }
 
     function toggle(name) {
         tray.popup = tray.popup === name ? "" : name
+        tray.askingPassword = false
+        tray.networkError = ""
+        if (tray.popup === "wifi")
+            tray.scan()
+    }
+
+    function scan() {
+        if (typeof networkInfo === "undefined" || !tray.wifiAvailable)
+            return
+        tray.scanning = true
+        tray.wifiNetworks = networkInfo.scanWifi()
+        tray.scanning = false
+        if (networkInfo.lastError !== "")
+            tray.networkError = networkInfo.lastError
+    }
+
+    function chooseNetwork(network) {
+        tray.networkError = ""
+        if (network.connected)
+            return
+        if (network.secured) {
+            tray.pendingSsid = network.ssid
+            tray.passwordText = ""
+            tray.askingPassword = true
+            return
+        }
+        tray.connectTo(network.ssid, "")
+    }
+
+    function connectTo(ssid, password) {
+        tray.networkError = ""
+        const result = networkInfo.connectWifi(ssid, password)
+        if (result && result.ok) {
+            tray.askingPassword = false
+            tray.pendingSsid = ""
+            tray.passwordText = ""
+            tray.refresh()
+            tray.scan()
+        } else {
+            tray.networkError = result && result.error ? result.error : "connessione non riuscita"
+        }
     }
 
     Component.onCompleted: refresh()
@@ -235,7 +285,11 @@ Rectangle {
         anchors.bottomMargin: 10
         anchors.right: parent.right
         width: 232
-        height: 96
+        height: tray.popup === "audio" ? 96
+              : tray.askingPassword ? 128
+              : 46 + Math.max(1, tray.interfaces.length) * 16
+                + (tray.wifiAvailable ? 22 + Math.max(1, tray.wifiNetworks.length) * 19 : 0)
+                + (tray.networkError !== "" ? 16 : 0)
         radius: 12
         color: "#f2081726"
         border.width: 1
@@ -263,11 +317,13 @@ Rectangle {
 
         // --- elenco interfacce ---
         Column {
+            id: ifaceColumn
+
             x: 14
-            y: 30
+            y: 28
             width: parent.width - 28
-            spacing: 7
-            visible: tray.popup === "wifi"
+            spacing: 3
+            visible: tray.popup === "wifi" && !tray.askingPassword
 
             Text {
                 visible: tray.interfaces.length === 0
@@ -292,12 +348,14 @@ Rectangle {
                         width: 6
                         height: 6
                         radius: 3
-                        color: ifaceRow.modelData.up ? Theme.green : Theme.textFaint
+                        color: ifaceRow.modelData.connected ? Theme.green : Theme.textFaint
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: ifaceRow.modelData.name
+                        width: 84
+                        elide: Text.ElideRight
+                        text: ifaceRow.modelData.label
                         color: Theme.text
                         font.family: "DejaVu Sans Mono"
                         font.pixelSize: 10
@@ -305,13 +363,223 @@ Rectangle {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: ifaceRow.modelData.kind + " \u00B7 " + ifaceRow.modelData.state
-                        color: Theme.textFaint
+                        text: (ifaceRow.modelData.kind === "wifi" ? "Wi-Fi"
+                             : ifaceRow.modelData.kind === "ethernet" ? "Ethernet"
+                             : ifaceRow.modelData.kind)
+                              + (ifaceRow.modelData.address !== ""
+                                 ? "  " + ifaceRow.modelData.address
+                                 : "  " + ifaceRow.modelData.state)
+                        color: ifaceRow.modelData.connected ? Theme.textDim : Theme.textFaint
                         font.family: "DejaVu Sans"
                         font.pixelSize: 9
                     }
                 }
             }
+        }
+
+        // --- reti Wi-Fi disponibili ------------------------------------------
+        Column {
+            id: networksColumn
+
+            x: 14
+            anchors.top: ifaceColumn.bottom
+            anchors.topMargin: 8
+            width: parent.width - 28
+            spacing: 1
+            visible: tray.popup === "wifi" && !tray.askingPassword && tray.wifiAvailable
+
+            Text {
+                text: tray.scanning ? "RICERCA RETI..." : "RETI DISPONIBILI"
+                color: Theme.textFaint
+                font.family: "DejaVu Sans"
+                font.pixelSize: 7
+                font.letterSpacing: 1.4
+            }
+
+            Text {
+                visible: tray.wifiNetworks.length === 0
+                text: tray.scanning ? "scansione in corso" : "nessuna rete trovata"
+                color: Theme.textFaint
+                font.family: "DejaVu Sans"
+                font.pixelSize: 9
+            }
+
+            Repeater {
+                model: tray.wifiNetworks
+
+                Rectangle {
+                    id: netRow
+
+                    required property var modelData
+
+                    width: parent.width
+                    height: 17
+                    radius: 4
+                    color: netMouse.containsMouse ? "#17304a" : "transparent"
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+
+                        Text {
+                            text: netRow.modelData.connected ? "\u25CF" : "\u25CB"
+                            color: netRow.modelData.connected ? Theme.green : Theme.textFaint
+                            font.family: "DejaVu Sans"
+                            font.pixelSize: 7
+                        }
+
+                        Text {
+                            width: 110
+                            elide: Text.ElideRight
+                            text: netRow.modelData.ssid
+                            color: netRow.modelData.connected ? Theme.text : Theme.textDim
+                            font.family: "DejaVu Sans"
+                            font.pixelSize: 9
+                        }
+
+                        Text {
+                            text: netRow.modelData.secured ? netRow.modelData.security : ""
+                            color: Theme.textFaint
+                            font.family: "DejaVu Sans"
+                            font.pixelSize: 6
+                        }
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: netRow.modelData.signal + "%"
+                        color: Theme.textFaint
+                        font.family: "DejaVu Sans Mono"
+                        font.pixelSize: 8
+                    }
+
+                    MouseArea {
+                        id: netMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: tray.chooseNetwork(netRow.modelData)
+                    }
+                }
+            }
+        }
+
+        // --- password Wi-Fi --------------------------------------------------
+        Column {
+            id: passwordColumn
+
+            x: 14
+            y: 30
+            width: parent.width - 28
+            spacing: 6
+            visible: tray.popup === "wifi" && tray.askingPassword
+
+            Text {
+                width: parent.width
+                elide: Text.ElideRight
+                text: "Password per " + tray.pendingSsid
+                color: Theme.text
+                font.family: "DejaVu Sans"
+                font.pixelSize: 9
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 26
+                radius: 6
+                color: "#05121e"
+                border.width: 1
+                border.color: passwordField.activeFocus ? "#88f9b234" : "#16ffffff"
+
+                TextInput {
+                    id: passwordField
+
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    echoMode: TextInput.Password
+                    color: Theme.text
+                    font.family: "DejaVu Sans"
+                    font.pixelSize: 10
+                    clip: true
+                    focus: tray.askingPassword
+
+                    onTextChanged: tray.passwordText = text
+                    onAccepted: tray.connectTo(tray.pendingSsid, tray.passwordText)
+                }
+            }
+
+            Row {
+                anchors.right: parent.right
+                spacing: 6
+
+                Rectangle {
+                    width: 64
+                    height: 22
+                    radius: 5
+                    color: cancelNetMouse.containsMouse ? "#17304a" : "#0d1e2e"
+                    border.width: 1
+                    border.color: "#1fffffff"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Annulla"
+                        color: Theme.textDim
+                        font.family: "DejaVu Sans"
+                        font.pixelSize: 8
+                    }
+
+                    MouseArea {
+                        id: cancelNetMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            tray.askingPassword = false
+                            tray.passwordText = ""
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 74
+                    height: 22
+                    radius: 5
+                    color: connectNetMouse.containsMouse ? "#ffc85a" : "#f9b234"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Connetti"
+                        color: "#031020"
+                        font.family: "DejaVu Sans"
+                        font.pixelSize: 8
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: connectNetMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: tray.connectTo(tray.pendingSsid, tray.passwordText)
+                    }
+                }
+            }
+        }
+
+        // --- errore di rete --------------------------------------------------
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 14
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 8
+            width: parent.width - 28
+            elide: Text.ElideRight
+            visible: tray.networkError !== ""
+            text: tray.networkError
+            color: "#e7988f"
+            font.family: "DejaVu Sans"
+            font.pixelSize: 7
         }
 
         // --- volume ---

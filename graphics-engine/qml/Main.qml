@@ -47,7 +47,17 @@ Window {
         enabled: true
         focus: true
 
+        // Alt+Tab cambia finestra in primo piano. Senza un window manager
+        // esterno la combinazione arriva direttamente alla shell.
+        Keys.onPressed: function (event) {
+            if (event.key === Qt.Key_Tab && (event.modifiers & Qt.AltModifier)) {
+                event.accepted = true
+                desktopView.cycleWindow()
+            }
+        }
+
         Desktop {
+            id: desktopView
             objectName: "Desktop"
             anchors.fill: parent
             visible: root.bootFinished
