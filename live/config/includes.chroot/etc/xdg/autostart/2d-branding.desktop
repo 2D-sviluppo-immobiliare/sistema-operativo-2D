@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=2D OS Branding
+Comment=Applica lo sfondo e l'identita' visiva 2D
+Exec=/usr/local/bin/2d-branding
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

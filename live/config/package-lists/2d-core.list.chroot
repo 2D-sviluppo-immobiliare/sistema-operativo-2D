@@ -1,0 +1,65 @@
+# 2D OS - livello base del sistema
+# Strumenti minimi, diagnostica hardware, rete, firmware.
+
+# --- Sistema ---
+less
+sudo
+nano
+vim-tiny
+rsync
+file
+unzip
+zip
+pv
+curl
+wget
+ca-certificates
+gnupg
+locales
+tzdata
+console-setup
+keyboard-configuration
+
+# --- Utente live: SENZA questo pacchetto live-config non crea l'utente ---
+user-setup
+live-config
+live-config-systemd
+live-boot
+
+# --- Diagnostica hardware (fondamentale per il laboratorio Acer/HP) ---
+inxi
+lshw
+pciutils
+usbutils
+smartmontools
+lm-sensors
+hwinfo
+dmidecode
+mesa-utils
+x11-xserver-utils
+
+# --- Memoria compressa: indispensabile su macchine con 4 GB ---
+zram-tools
+
+# --- Avvio grafico ---
+plymouth
+plymouth-themes
+
+# --- Rete ---
+network-manager
+wpasupplicant
+rfkill
+
+# --- Firmware (schede Wi-Fi e video datate) ---
+firmware-linux-free
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-misc-nonfree
+firmware-amd-graphics
+firmware-intel-graphics
+
+# --- Accesso remoto verso il laboratorio ---
+openssh-client
+openssh-server

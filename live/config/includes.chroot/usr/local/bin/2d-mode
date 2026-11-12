@@ -1,0 +1,221 @@
+#!/bin/bash
+#
+# 2d-mode - adatta l'interfaccia 2D all'hardware su cui sta girando.
+#
+# Profili:
+#   classic    interfaccia leggera: nessun compositore, nessun HUD, nessuna dock.
+#              Pensata per PC con grafica integrata datata o poca RAM.
+#   immersive  compositore, dock con animazioni e HUD hardware.
+#              Pensata per macchine con accelerazione grafica reale.
+#   auto       sceglie in base a GPU, renderer OpenGL e RAM (predefinito).
+#
+# Uso:
+#   2d-mode status        mostra rilevamento e profilo attivo
+#   2d-mode auto          rileva e applica (usato all'avvio della sessione)
+#   2d-mode classic       forza il profilo leggero
+#   2d-mode immersive     forza il profilo completo
+#   2d-mode reset         torna a "auto"
+#
+set -u
+
+CONF_DIR="${HOME}/.config/2d"
+CONF="${CONF_DIR}/system.conf"
+mkdir -p "${CONF_DIR}"
+[ -f "${CONF}" ] || printf 'mode=auto\nboot_sound=1\n' > "${CONF}"
+
+get_conf() { sed -n "s/^$1=//p" "${CONF}" 2>/dev/null | tail -1; }
+
+set_conf() {
+    if grep -q "^$1=" "${CONF}" 2>/dev/null; then
+        sed -i "s|^$1=.*|$1=$2|" "${CONF}"
+    else
+        printf '%s=%s\n' "$1" "$2" >> "${CONF}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Rilevamento hardware
+# ---------------------------------------------------------------------------
+detect_renderer() {
+    local r
+    r="$(glxinfo -B 2>/dev/null | sed -n 's/^OpenGL renderer string: //p' | head -1)"
+    [ -n "${r}" ] || r="$(glxinfo 2>/dev/null | sed -n 's/^OpenGL renderer string: //p' | head -1)"
+    printf '%s' "${r}"
+}
+
+detect_ram_mb() {
+    awk '/MemTotal/ { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null || echo 0
+}
+
+detect_gpu_name() {
+    lspci 2>/dev/null | grep -Ei 'vga|3d|display' | head -1 | sed 's/^[0-9a-f:.]* //'
+}
+
+detect_profile() {
+    local renderer ram profile reason
+
+    renderer="$(detect_renderer)"
+    ram="$(detect_ram_mb)"
+
+    profile="immersive"
+    reason="GPU accelerata (${renderer:-sconosciuta})"
+
+    case "${renderer}" in
+        "")
+            profile="classic"
+            reason="renderer OpenGL non rilevato (nessun accelerazione)"
+            ;;
+        *llvmpipe*|*softpipe*|*swrast*|*Software*)
+            profile="classic"
+            reason="rendering software (${renderer})"
+            ;;
+    esac
+
+    if [ "${ram}" -lt 3584 ] 2>/dev/null; then
+        profile="classic"
+        reason="${reason}; RAM ${ram} MB"
+    fi
+
+    printf '%s|%s' "${profile}" "${reason}"
+}
+
+# ---------------------------------------------------------------------------
+# Applicazione dei profili
+# ---------------------------------------------------------------------------
+stop_optional() {
+    pkill -x picom 2>/dev/null
+    pkill -x conky 2>/dev/null
+    pkill -x plank 2>/dev/null
+    sleep 0.3
+}
+
+SHELL_BIN="/usr/lib/2d-os/shell/2d-shell"
+
+ensure_xfdesktop() {
+    pgrep -x xfdesktop >/dev/null 2>&1 || ( xfdesktop >/dev/null 2>&1 & )
+}
+
+stop_shell() {
+    pkill -f "${SHELL_BIN}" 2>/dev/null
+    sleep 0.3
+}
+
+start_shell() {
+    if [ ! -x "${SHELL_BIN}" ]; then
+        ensure_xfdesktop
+        return 0
+    fi
+    # Il desktop proprietario sostituisce xfdesktop (non si sovrappongono)
+    xfdesktop --quit >/dev/null 2>&1 || pkill -x xfdesktop 2>/dev/null
+    sleep 0.4
+    ( "${SHELL_BIN}" >/dev/null 2>&1 & )
+    sleep 2
+    if pgrep -f "${SHELL_BIN}" >/dev/null 2>&1; then
+        echo "2d-mode: shell desktop 2D attiva" >&2
+    else
+        echo "2d-mode: shell non avviata, ripristino xfdesktop" >&2
+        ensure_xfdesktop
+    fi
+}
+
+xfce_set() { # canale proprieta valore
+    command -v xfconf-query >/dev/null 2>&1 || return 0
+    xfconf-query -c "$1" -p "$2" -n -t bool -s "$3" 2>/dev/null ||
+        xfconf-query -c "$1" -p "$2" -s "$3" 2>/dev/null || true
+}
+
+apply_classic() {
+    stop_optional
+    stop_shell
+    ensure_xfdesktop
+    # Compositing dello stesso xfwm4 disattivato: priorita' alla reattivita'
+    xfce_set xfwm4 /general/use_compositing false
+    xfce_set xfwm4 /general/box_move false
+    xfce_set xfwm4 /general/show_frame_shadow false
+    xfce_set xfwm4 /general/show_popup_shadow false
+    xfce_set xfwm4 /general/cycle_preview true
+    # Sfondo scalato senza effetti
+    echo "2d-mode: profilo CLASSIC attivo" >&2
+}
+
+apply_immersive() {
+    stop_optional
+    # Il compositing lo gestisce picom, quindi xfwm4 resta senza compositing
+    xfce_set xfwm4 /general/use_compositing false
+
+    # Desktop proprietario 2D al posto di xfdesktop
+    start_shell
+
+    if command -v picom >/dev/null 2>&1; then
+        picom --config "${HOME}/.config/picom/2d.conf" -b 2>/dev/null
+        sleep 1
+        if ! pgrep -x picom >/dev/null 2>&1; then
+            # Configurazione ridotta: massima compatibilita'
+            picom --backend xrender --shadow --fading -b 2>/dev/null || true
+        fi
+    fi
+
+    if command -v plank >/dev/null 2>&1; then
+        ( plank >/dev/null 2>&1 & )
+    fi
+
+    # L'HUD (ora, CPU, RAM) e' disegnato direttamente da 2d-shell.
+    # conky resta installato come alternativa: si attiva mettendo hud = 0
+    # in ~/.config/2d/shell.conf e avviando conky a mano.
+
+    echo "2d-mode: profilo IMMERSIVE attivo" >&2
+}
+
+# ---------------------------------------------------------------------------
+# Comandi
+# ---------------------------------------------------------------------------
+ACTION="${1:-auto}"
+
+case "${ACTION}" in
+    status)
+        DETECT="$(detect_profile)"
+        echo "Profilo rilevato : ${DETECT%%|*}"
+        echo "Motivo           : ${DETECT#*|}"
+        echo "Profilo attivo   : ${PROFILE_ACTIVE:-$(get_conf mode)}"
+        echo "GPU              : $(detect_gpu_name)"
+        echo "RAM              : $(detect_ram_mb) MB"
+        echo "Renderer         : $(detect_renderer)"
+        if pgrep -f "${SHELL_BIN}" >/dev/null 2>&1; then
+            echo "Desktop          : 2D Shell (proprietaria)"
+        elif pgrep -x xfdesktop >/dev/null 2>&1; then
+            echo "Desktop          : xfdesktop"
+        else
+            echo "Desktop          : non attivo"
+        fi
+        ;;
+    auto)
+        # Attende che la sessione XFCE esponga il canale xfconf (max 15 s):
+        # all'avvio automatico la sessione non e' ancora pronta.
+        if command -v xfconf-query >/dev/null 2>&1; then
+            for _ in $(seq 1 30); do
+                xfconf-query -c xfwm4 -l >/dev/null 2>&1 && break
+                sleep 0.5
+            done
+        fi
+        DETECT="$(detect_profile)"
+        PROF="${DETECT%%|*}"
+        echo "2d-mode: ${DETECT#*|} -> ${PROF}" >&2
+        if [ "${PROF}" = "classic" ]; then apply_classic; else apply_immersive; fi
+        ;;
+    classic)
+        set_conf mode classic
+        apply_classic
+        ;;
+    immersive)
+        set_conf mode immersive
+        apply_immersive
+        ;;
+    reset)
+        set_conf mode auto
+        echo "2d-mode: modalita' automatica ripristinata" >&2
+        ;;
+    *)
+        sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

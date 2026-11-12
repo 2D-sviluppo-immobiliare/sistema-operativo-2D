@@ -1,0 +1,20 @@
+#!/bin/bash
+#
+# 2d-info - riepilogo rapido dello stato di 2D OS
+#
+set -u
+
+echo
+echo "  2D OS  ·  Portable Intelligence Operating System"
+echo "  -------------------------------------------------"
+printf "  Versione      : %s\n" "$(cat /etc/2d-os/release 2>/dev/null || echo 'sviluppo')"
+printf "  Kernel        : %s\n" "$(uname -r)"
+printf "  Avvio         : %s\n" "$(findmnt -n -o SOURCE / 2>/dev/null || echo '?')"
+printf "  Persistenza   : %s\n" "$( [ -d /run/live/persistence ] && echo attiva || echo 'non attiva' )"
+printf "  RAM           : %s\n" "$(free -h | awk '/^Mem:/{print $2" totali, "$7" disponibili"}')"
+printf "  Swap (zram)   : %s\n" "$(free -h | awk '/^Swap:/{print $2}')"
+printf "  Rete          : %s\n" "$(nmcli -t -f DEVICE,STATE device 2>/dev/null | grep ':connected' | cut -d: -f1 | paste -sd' ' - || echo '-')"
+printf "  Firmware      : %s\n" "$( [ -d /sys/firmware/efi ] && echo UEFI || echo 'BIOS legacy' )"
+echo "  -------------------------------------------------"
+echo "  2d-hwreport  →  rapporto hardware completo"
+echo

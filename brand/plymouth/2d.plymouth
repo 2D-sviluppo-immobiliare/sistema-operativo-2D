@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=2D OS
+Description=Avvio di 2D OS - marchio 2D su fondo blu notte
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/2d
+ScriptFile=/usr/share/plymouth/themes/2d/2d.script

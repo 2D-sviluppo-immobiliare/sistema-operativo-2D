@@ -1,0 +1,39 @@
+#!/bin/bash
+#
+# 2d-branding - applica l'identita' visiva 2D al desktop XFCE.
+#
+# Viene eseguito una volta per sessione da /etc/xdg/autostart/2d-branding.desktop.
+# Imposta lo sfondo su tutti i monitor senza dover conoscere in anticipo
+# i nomi dei monitor (che cambiano da macchina a macchina).
+#
+set -u
+
+WALL="/usr/share/backgrounds/2d/2d-wallpaper.svg"
+[ -f "${WALL}" ] || exit 0
+
+# Attende che il canale xfconf della sessione sia disponibile
+for _ in $(seq 1 30); do
+    xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
+    sleep 1
+done
+
+# Imposta last-image su ogni monitor/workspace gia' registrato
+xfconf-query -c xfce4-desktop -l 2>/dev/null \
+    | grep -E '/backdrop/screen[0-9]+/monitor[^/]+/workspace[0-9]+/last-image$' \
+    | while read -r prop; do
+        xfconf-query -c xfce4-desktop -p "${prop}" -s "${WALL}" 2>/dev/null || true
+        xfconf-query -c xfce4-desktop -p "${prop%last-image}image-style" -s 5 2>/dev/null || true
+    done
+
+# Se non esiste ancora nessuna proprieta' (prima sessione), la crea
+if ! xfconf-query -c xfce4-desktop -l 2>/dev/null | grep -q 'last-image$'; then
+    for screen in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | sed -n 's#^/backdrop/\(screen[0-9]*\)/.*#\1#p' | sort -u); do
+        for monitor in $(xfconf-query -c xfce4-desktop -l 2>/dev/null | sed -n "s#^/backdrop/${screen}/\(monitor[^/]*\)/.*#\1#p" | sort -u); do
+            prop="/backdrop/${screen}/${monitor}/workspace0/last-image"
+            xfconf-query -c xfce4-desktop -p "${prop}" -n -t string -s "${WALL}" 2>/dev/null || true
+            xfconf-query -c xfce4-desktop -p "${prop%last-image}image-style" -n -t int -s 5 2>/dev/null || true
+        done
+    done
+fi
+
+exit 0

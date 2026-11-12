@@ -1,0 +1,14 @@
+[PlankDockPreferences]
+Alignment="center"
+AutoPinning=true
+CurrentWorkspaceOnly=false
+HideMode=2
+IconSize=48
+ItemsAlignment="center"
+Locked=false
+Position=3
+ShowDockItem=true
+Theme="Default"
+Tooltips=true
+ZoomEnabled=true
+ZoomPercent=140

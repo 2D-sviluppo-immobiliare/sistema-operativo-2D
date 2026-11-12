@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configurazione openbox per la demo di 2D OS.
+  Il desktop 2D e' una finestra "below", senza decorazioni, a tutto schermo:
+  le applicazioni si aprono sopra e si chiudono normalmente.
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <applications>
+    <application name="2D OS">
+      <decor>no</decor>
+    </application>
+  </applications>
+</openbox_config>

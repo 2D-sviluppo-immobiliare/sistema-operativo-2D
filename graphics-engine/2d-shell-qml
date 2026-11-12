@@ -1,0 +1,275 @@
+#!/usr/bin/python3
+"""
+2D OS - avvio del motore grafico QML.
+
+Avvia Main.qml con PySide6. Accetta --fullscreen, che viene letto da Main.qml
+tramite Qt.application.arguments.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+from PySide6.QtCore import QLocale, QObject, QProcess, Qt, QUrl, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickWindow
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from backend.apps import Apps  # noqa: E402
+from backend.chat import ChatClient  # noqa: E402
+from backend.files import FileBrowser  # noqa: E402
+from backend.trash import TrashModel  # noqa: E402
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+MAIN_QML = os.path.join(BASE, "qml", "Main.qml")
+
+
+class Launcher(QObject):
+    """Avvia e chiude le applicazioni del desktop.
+
+    La stessa voce della dock apre l'applicazione se non e' attiva e la chiude
+    se lo e' gia': senza un window manager e' l'unico modo affidabile di
+    chiudere una finestra.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._procs: dict[str, QProcess] = {}
+
+    @Slot(str, str)
+    def toggle(self, key: str, command: str) -> None:
+        if not command:
+            return
+
+        running = self._procs.get(key)
+        if running is not None and running.state() != QProcess.NotRunning:
+            print(f"[2D] chiusura: {key}", flush=True)
+            running.terminate()
+            if not running.waitForFinished(1500):
+                running.kill()
+            self._procs.pop(key, None)
+            return
+
+        print(f"[2D] avvio: {command}", flush=True)
+        proc = QProcess(self)
+        proc.setProgram("/bin/sh")
+        proc.setArguments(["-c", command])
+        proc.finished.connect(lambda *_: self._procs.pop(key, None))
+        proc.start()
+        if not proc.waitForStarted(2000):
+            print(f"[2D] avvio fallito: {command}", file=sys.stderr, flush=True)
+            return
+        self._procs[key] = proc
+
+
+class SystemInfo(QObject):
+    """Telemetria della macchina per il pannello SISTEMA 2D.
+
+    Legge /proc una volta ogni chiamata; il primo campionamento della CPU non
+    ha un riferimento precedente e restituisce zero.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._prev_idle = 0.0
+        self._prev_total = 0.0
+        self._volume: int | None = None
+
+    @Slot(result="QVariantMap")
+    def stats(self) -> dict:
+        return {"cpu": self._cpu(), "ram": self._ram(), "disk": self._disk()}
+
+    def _cpu(self) -> float:
+        try:
+            with open("/proc/stat", "r", encoding="ascii") as handle:
+                fields = handle.readline().split()[1:]
+            values = [float(value) for value in fields]
+        except (OSError, ValueError):
+            return 0.0
+
+        idle = values[3] + (values[4] if len(values) > 4 else 0.0)
+        total = sum(values)
+        delta_total = total - self._prev_total
+        delta_idle = idle - self._prev_idle
+        self._prev_idle = idle
+        self._prev_total = total
+        if delta_total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - delta_idle / delta_total))
+
+    def _ram(self) -> float:
+        try:
+            with open("/proc/meminfo", "r", encoding="ascii") as handle:
+                lines = handle.readlines()
+        except OSError:
+            return 0.0
+
+        info: dict[str, float] = {}
+        for line in lines:
+            key, _, rest = line.partition(":")
+            parts = rest.split()
+            if parts:
+                try:
+                    info[key.strip()] = float(parts[0])
+                except ValueError:
+                    continue
+
+        total = info.get("MemTotal", 0.0)
+        available = info.get("MemAvailable", 0.0)
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - available / total))
+
+    def _disk(self) -> float:
+        try:
+            st = os.statvfs("/")
+        except OSError:
+            return 0.0
+        total = st.f_blocks * st.f_frsize
+        free = st.f_bavail * st.f_frsize
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - free / total))
+
+    # --- system tray ---------------------------------------------------------
+
+    @Slot(result="QVariantList")
+    def network(self) -> list:
+        """Interfacce di rete con il loro stato, lette da /sys/class/net."""
+        interfaces = []
+        try:
+            names = sorted(os.listdir("/sys/class/net"))
+        except OSError:
+            return interfaces
+
+        for name in names:
+            if name == "lo":
+                continue
+            base = f"/sys/class/net/{name}"
+            try:
+                with open(f"{base}/operstate", "r", encoding="ascii") as handle:
+                    state = handle.read().strip()
+            except OSError:
+                state = "unknown"
+
+            kind = "Ethernet"
+            if os.path.exists(f"{base}/wireless") or name.startswith(("wl", "wlan")):
+                kind = "Wi-Fi"
+            elif name.startswith(("ww", "ppp", "tun")):
+                kind = "Mobile"
+
+            interfaces.append({
+                "name": name,
+                "kind": kind,
+                "up": state == "up",
+                "state": state,
+            })
+        return interfaces
+
+    @Slot(result=int)
+    def volume(self) -> int:
+        """Volume corrente in percentuale; 0 se non c'e' un mixer."""
+        if self._volume is None:
+            self._volume = self._read_volume()
+        return self._volume
+
+    @Slot(int)
+    def setVolume(self, value: int) -> int:
+        self._volume = max(0, min(100, int(value)))
+        self._apply_volume(self._volume)
+        return self._volume
+
+    def _read_volume(self) -> int:
+        mixer = shutil.which("amixer")
+        if mixer is None:
+            return 60
+        try:
+            result = subprocess.run(
+                [mixer, "get", "Master"], capture_output=True, text=True, timeout=2
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 60
+        match = re.search(r"\[(\d{1,3})%\]", result.stdout)
+        if match is None:
+            return 60
+        return max(0, min(100, int(match.group(1))))
+
+    def _apply_volume(self, value: int) -> None:
+        mixer = shutil.which("amixer")
+        if mixer is None:
+            return
+        try:
+            subprocess.run(
+                [mixer, "-q", "sset", "Master", f"{value}%"],
+                capture_output=True, timeout=2,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def main() -> int:
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName("2D OS")
+    app.setOrganizationName("2D Sviluppo Immobiliare")
+
+    # Date e orari in italiano anche quando il sistema non ha i locale generati.
+    QLocale.setDefault(QLocale(QLocale.Language.Italian, QLocale.Country.Italy))
+
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("startWithBoot", "--boot" in sys.argv)
+    engine.rootContext().setContextProperty("startFullscreen", "--fullscreen" in sys.argv)
+
+    # Riferimento forte: senza questo il QObject viene distrutto dal GC
+    # e le chiamate da QML non arrivano piu' a Python.
+    launcher = Launcher()
+    engine.rootContext().setContextProperty("launcher", launcher)
+
+    system_info = SystemInfo()
+    engine.rootContext().setContextProperty("systemInfo", system_info)
+
+    # --- backend delle applicazioni reali -----------------------------------
+    file_browser = FileBrowser()
+    engine.rootContext().setContextProperty("fileBrowser", file_browser)
+
+    trash_model = TrashModel()
+    engine.rootContext().setContextProperty("trashModel", trash_model)
+
+    apps = Apps()
+    engine.rootContext().setContextProperty("apps", apps)
+
+    chat_client = ChatClient()
+    engine.rootContext().setContextProperty("chatClient", chat_client)
+
+    engine.load(QUrl.fromLocalFile(MAIN_QML))
+
+    if not engine.rootObjects():
+        print(f"2D OS: impossibile caricare {MAIN_QML}", file=sys.stderr)
+        return 1
+
+    # Senza attivazione esplicita la finestra non riceve gli eventi del mouse
+    # sotto un window manager: requestActivate() la rende attiva.
+    window = engine.rootObjects()[0]
+    if isinstance(window, QQuickWindow):
+        screen = app.primaryScreen()
+        if screen is not None:
+            window.setGeometry(screen.geometry())
+            print(f"[2D] geometria: {screen.geometry()}", flush=True)
+        if "--fullscreen" in sys.argv:
+            # Nessuna decorazione e nessun bordo: la shell occupa tutto lo
+            # schermo, come deve fare il desktop di un sistema operativo.
+            window.setFlag(Qt.FramelessWindowHint, True)
+            window.setVisibility(QQuickWindow.FullScreen)
+            print("[2D] modalita' schermo intero", flush=True)
+        window.requestActivate()
+
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

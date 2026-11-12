@@ -1,0 +1,55 @@
+#!/bin/sh
+# 0100-2d-system.hook.chroot
+#
+# Identita' del sistema, servizi e initramfs con il tema di avvio 2D.
+set -eu
+
+echo "[2D] Configurazione identita' di sistema"
+
+mkdir -p /etc/2d-os
+# La versione viene scritta dal build nel file incluso; qui solo fallback.
+[ -s /etc/2d-os/release ] || printf '%s\n' "0.1.0" > /etc/2d-os/release
+cat > /etc/2d-os/info <<'EOF'
+NAME="2D OS"
+PRETTY_NAME="2D OS (portable live)"
+ID=2dos
+ID_LIKE=debian
+HOME_URL="https://github.com/2D-sviluppo-immobiliare"
+EOF
+
+# --- Tastiera e locale italiani -------------------------------------------
+if [ -f /etc/default/keyboard ]; then
+    sed -i 's/^XKBLAYOUT=.*/XKBLAYOUT="it"/' /etc/default/keyboard
+    sed -i 's/^XKBVARIANT=.*/XKBVARIANT=""/' /etc/default/keyboard
+else
+    printf 'XKBMODEL="pc105"\nXKBLAYOUT="it"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n' \
+        > /etc/default/keyboard
+fi
+
+# --- Servizi --------------------------------------------------------------
+systemctl enable ssh.service 2>/dev/null || true
+systemctl enable zramswap.service 2>/dev/null || true
+# live-config crea l'utente live all'avvio: senza questo servizio non esiste
+systemctl enable live-config.service 2>/dev/null || true
+systemctl set-default graphical.target 2>/dev/null || true
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
+
+# Il server SSH accetta solo l'utente live con password, non root.
+if [ -f /etc/ssh/sshd_config ]; then
+    sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+fi
+
+# --- Script 2D ------------------------------------------------------------
+chmod 0755 /usr/local/bin/2d-hwreport /usr/local/bin/2d-info /usr/local/bin/2d-branding \
+           /usr/local/bin/2d-mode /usr/local/bin/2d-gpu /usr/local/bin/2d-bootsound 2>/dev/null || true
+chmod 0755 /usr/lib/2d-os/shell/2d-shell 2>/dev/null || true
+
+# --- Tema di avvio --------------------------------------------------------
+echo "[2D] Impostazione tema Plymouth"
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+    plymouth-set-default-theme -R 2d || true
+fi
+update-initramfs -u -k all || true
+
+echo "[2D] Identita' di sistema completata"

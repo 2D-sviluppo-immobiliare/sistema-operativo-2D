@@ -1,0 +1,77 @@
+# 2D OS - ambiente grafico
+# XFCE personalizzato: leggero, compatibile con hardware datato.
+
+task-xfce-desktop
+lightdm
+lightdm-gtk-greeter
+
+xfce4-terminal
+thunar
+thunar-volman
+gvfs
+gvfs-backends
+mousepad
+ristretto
+xfce4-taskmanager
+xfce4-power-manager
+xfce4-pulseaudio-plugin
+xfce4-whiskermenu-plugin
+pavucontrol
+network-manager-gnome
+xdg-utils
+desktop-file-utils
+
+# Browser: Chromium dalla main (Firefox ESR come alternativa)
+chromium
+firefox-esr
+
+# Aspetto: icone e tema sobri, coerenti con l'identita' blu notte / oro
+papirus-icon-theme
+arc-theme
+fonts-dejavu
+fonts-liberation
+fonts-noto-core
+
+# --- Adattamento all'hardware: driver video e input per tutti i PC ---
+xserver-xorg-video-all
+xserver-xorg-input-all
+libgl1-mesa-dri
+mesa-vulkan-drivers
+
+# --- Interfaccia 2D: dock, compositore, HUD ---
+plank
+picom
+conky-all
+pulseaudio-utils
+libcanberra-gtk3-module
+
+# --- 2D Shell (desktop proprietario) ---
+python3
+python3-gi
+python3-gi-cairo
+python3-cairo
+gir1.2-gtk-3.0
+gir1.2-pango-1.0
+gir1.2-gdkpixbuf-2.0
+gir1.2-glib-2.0
+librsvg2-common
+
+# --- Motore grafico QML: e' la shell predefinita della sessione 2D ---
+python3-pyside6.qtcore
+python3-pyside6.qtgui
+python3-pyside6.qtqml
+python3-pyside6.qtquick
+qml6-module-qtquick
+qml6-module-qtquick-window
+qml6-module-qtqml-workerscript
+qt6-qpa-plugins
+libqt6svg6
+qt6-svg-plugins
+fonts-dejavu-core
+
+# --- HTTPS: senza i certificati CA nessun provider AI e' raggiungibile ---
+ca-certificates
+
+# --- Finestre applicative avviate dalla dock ---
+xterm
+x11-utils

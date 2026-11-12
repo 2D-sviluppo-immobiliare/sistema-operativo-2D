@@ -1,0 +1,6 @@
+# 2D OS - memoria compressa
+# Su macchine con 4 GB di RAM zram e' preferibile allo swap su USB
+# (nessuna usura della chiavetta, latenza piu' bassa).
+ALGORITHM=zstd
+PERCENT=50
+PRIORITY=100

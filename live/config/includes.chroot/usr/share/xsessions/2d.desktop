@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=2D OS
+Comment=Sessione grafica 2D OS
+Exec=/usr/local/bin/2d-session
+Type=Application
+DesktopNames=2D
+Keywords=2d;shell;desktop;

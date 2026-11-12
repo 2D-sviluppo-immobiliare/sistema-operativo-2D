@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# 2D OS - avvio della sessione grafica.
+#
+# La shell disegna da sola cornici, barre del titolo e pulsanti di chiusura,
+# quindi non serve un window manager esterno. Se il motore Qt non e'
+# disponibile si ricade sulla shell GTK storica, cosi' il sistema resta
+# avviabile anche su un'immagine costruita senza i moduli QML.
+set -u
+
+ENGINE="/opt/2d-os/engine"
+LOG_DIR="/var/log/2d-os"
+
+mkdir -p "${LOG_DIR}" 2>/dev/null || true
+if [ -w "${LOG_DIR}" ]; then
+    exec >>"${LOG_DIR}/session.log" 2>&1
+fi
+
+echo "[2D] avvio sessione $(date -Iseconds)"
+
+export QML_XHR_ALLOW_FILE_READ=1
+export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-}"
+
+if [ -r "${ENGINE}/2d-shell-qml" ]; then
+    if python3 -c "import PySide6.QtQuick" >/dev/null 2>&1; then
+        exec python3 "${ENGINE}/2d-shell-qml" --boot --fullscreen
+    fi
+    echo "[2D] PySide6 non disponibile: uso la shell GTK" >&2
+fi
+
+if [ -x /usr/lib/2d-os/shell/2d-shell ]; then
+    exec /usr/lib/2d-os/shell/2d-shell
+fi
+
+echo "[2D] nessuna shell disponibile" >&2
+exit 1

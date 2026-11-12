@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# 2d-gpu - riga sintetica sullo stato della GPU, per il pannello HUD.
+# Gestisce NVIDIA (nvidia-smi), AMD (gpu_busy_percent) e Intel (engine busy),
+# con fallback sul nome del driver: su hardware datato non esiste un valore
+# percentuale da leggere, e questo non deve essere un errore.
+#
+set -u
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+    line="$(nvidia-smi --query-gpu=utilization.gpu,temperature.gpu \
+            --format=csv,noheader,nounits 2>/dev/null | head -1)"
+    if [ -n "${line}" ]; then
+        util="${line%%,*}"; temp="${line##*,}"
+        printf 'NVIDIA %s%% · %sC' "$(echo "${util}" | tr -d ' ')" "$(echo "${temp}" | tr -d ' ')"
+        exit 0
+    fi
+fi
+
+for dev in /sys/class/drm/card[0-9]/device; do
+    [ -d "${dev}" ] || continue
+    if [ -r "${dev}/gpu_busy_percent" ]; then
+        printf 'AMD %s%%' "$(cat "${dev}/gpu_busy_percent" 2>/dev/null)"
+        exit 0
+    fi
+    if [ -r "${dev}/engine/rcs0/busy" ]; then
+        printf 'Intel %s%%' "$(cat "${dev}/engine/rcs0/busy" 2>/dev/null)"
+        exit 0
+    fi
+done
+
+driver="$(lspci -k 2>/dev/null | grep -A3 -Ei 'vga|3d' | sed -n 's/.*Kernel driver in use: //p' | head -1)"
+renderer="$(glxinfo -B 2>/dev/null | sed -n 's/^OpenGL renderer string: //p' | head -1)"
+
+if [ -n "${renderer}" ]; then
+    printf '%s' "${renderer}" | cut -c1-28
+elif [ -n "${driver}" ]; then
+    printf '%s' "${driver}"
+else
+    printf 'n/d'
+fi

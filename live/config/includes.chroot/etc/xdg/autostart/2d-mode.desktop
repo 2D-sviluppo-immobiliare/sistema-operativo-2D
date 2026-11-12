@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=2D OS - Adattamento interfaccia
+Comment=Applica il profilo grafico adatto a questo computer
+Exec=2d-mode auto
+Icon=preferences-desktop-display
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Marchio 2D provvisorio (placeholder).
+
+  Per usare il logo ufficiale: sostituire questo file con
+      brand/logo/logo.svg
+  oppure
+      brand/logo/logo.png   (trasparente, almeno 512 px di altezza)
+
+  Se uno dei due esiste, la build lo preferisce automaticamente a questo.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <text x="320" y="185" text-anchor="middle"
+        font-family="DejaVu Sans, Liberation Sans, sans-serif"
+        font-size="170" font-weight="700" letter-spacing="16"
+        fill="#e6c478">2D</text>
+  <line x1="150" y1="218" x2="490" y2="218"
+        stroke="#e6c478" stroke-opacity="0.35" stroke-width="1.5"/>
+  <text x="320" y="258" text-anchor="middle"
+        font-family="DejaVu Sans, Liberation Sans, sans-serif"
+        font-size="22" letter-spacing="10"
+        fill="#9fb6ca">SVILUPPO IMMOBILIARE</text>
+</svg>

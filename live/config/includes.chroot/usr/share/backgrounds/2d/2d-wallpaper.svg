@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#0b1a2b"/>
+      <stop offset="55%" stop-color="#0a1622"/>
+      <stop offset="100%" stop-color="#050b13"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="55%">
+      <stop offset="0%"   stop-color="#e6c478" stop-opacity="0.13"/>
+      <stop offset="60%"  stop-color="#4a6b8a" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#7d9bb5" stroke-width="0.5" stroke-opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+
+  <!-- cornice sottile -->
+  <rect x="40" y="40" width="1840" height="1000" fill="none"
+        stroke="#e6c478" stroke-opacity="0.18" stroke-width="1"/>
+
+  <!-- marchio -->
+  <g transform="translate(960 470)" text-anchor="middle"
+     font-family="DejaVu Sans, Liberation Sans, sans-serif">
+    <text x="0" y="0" font-size="210" font-weight="700" letter-spacing="18"
+          fill="#e6c478" fill-opacity="0.95">2D</text>
+    <text x="0" y="76" font-size="30" letter-spacing="14"
+          fill="#c8d6e2" fill-opacity="0.85">SVILUPPO IMMOBILIARE</text>
+    <line x1="-330" y1="120" x2="330" y2="120"
+          stroke="#e6c478" stroke-opacity="0.35" stroke-width="1"/>
+    <text x="0" y="170" font-size="20" letter-spacing="9"
+          fill="#8aa4bb">PORTABLE INTELLIGENCE OPERATING SYSTEM</text>
+  </g>
+
+  <!-- indicatore di versione -->
+  <text x="76" y="1000" font-size="16" letter-spacing="4"
+        font-family="DejaVu Sans, sans-serif" fill="#8aa4bb" fill-opacity="0.7">
+    2D OS
+  </text>
+</svg>

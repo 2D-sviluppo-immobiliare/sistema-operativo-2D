@@ -1,0 +1,9 @@
+Questa cartella raccoglie i pacchetti .deb da includere nell'immagine
+(per esempio Visual Studio Code).
+
+Copiare qui i file .deb, poi ricostruire la ISO con:  make build
+
+I pacchetti vengono installati nell'hook 0200-2d-extra-debs e i file
+sorgente vengono rimossi dall'immagine finale.
+
+NOTA SICUREZZA: non inserire qui pacchetti di provenienza incerta.

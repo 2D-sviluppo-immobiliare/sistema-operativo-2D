@@ -1,0 +1,21 @@
+   _____   ____      ____  _____
+  |  __ \ |  _ \    / __ \/ ____|
+  | |  | || | | |  | |  | ( (___
+  | |  | || | | |  | |  | |\___ \
+  | |__| || |_| |  | |__| |____) |
+  |_____/ |____/    \____/|_____/
+
+  2D OS  ·  Portable Intelligence Operating System
+  Sviluppo Immobiliare  ·  uso interno
+
+  Sistema      : Debian GNU/Linux (trixie) - base live
+  Modalita'    : Live USB, nessuna modifica al disco interno
+  Persistenza  : partizione con etichetta "persistence" (facoltativa)
+
+  Comandi utili:
+    2d-hwreport      genera il rapporto hardware della macchina
+    2d-info          riepilogo rapido del sistema
+    sudo -i          privilegi di amministratore
+    nmtui            configurazione rete da terminale
+
+  Versione in sviluppo: questo e' un prototipo di laboratorio.

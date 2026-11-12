@@ -1,0 +1,15 @@
+# Ambiente per eseguire 2D OS in una macchina virtuale (QEMU) dentro un container.
+# Serve alla demo nel browser: il container disegna su Xvfb e usa /dev/kvm.
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        qemu-system-x86 \
+        qemu-system-gui \
+        qemu-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /isos
+
+ENTRYPOINT ["qemu-system-x86_64"]

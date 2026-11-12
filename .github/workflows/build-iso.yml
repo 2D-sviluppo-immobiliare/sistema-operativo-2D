@@ -1,0 +1,54 @@
+name: build-iso
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Libera spazio su disco
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: Versione
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Build ISO
+        run: ./scripts/build.sh
+
+      - name: Permessi artefatti
+        run: sudo chown -R "$USER:$USER" dist || true
+
+      - name: Carica ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: 2d-os-${{ steps.version.outputs.value }}
+          path: |
+            dist/*.iso
+            dist/SHA256SUMS
+          retention-days: 30
+
+      - name: Log di build (in caso di errore)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            live/build.log
+            dist/build.log
+          if-no-files-found: ignore

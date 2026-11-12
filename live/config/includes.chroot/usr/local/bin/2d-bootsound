@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# 2d-bootsound - suono di avvio di 2D OS.
+#
+# Parte con la sessione grafica, quando l'audio e' gia' disponibile.
+# Disattivabile impostando boot_sound=0 in ~/.config/2d/system.conf
+#
+set -u
+
+CONF="${HOME}/.config/2d/system.conf"
+[ -f "${CONF}" ] || exit 0
+grep -q '^boot_sound=0' "${CONF}" && exit 0
+
+FILE="/usr/share/sounds/2d/2d-boot.wav"
+[ -f "${FILE}" ] || exit 0
+
+# Attende che il server audio risponda (max 10 s)
+for _ in $(seq 1 20); do
+    if command -v pactl >/dev/null 2>&1 && pactl info >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.5
+done
+
+if command -v paplay >/dev/null 2>&1; then
+    paplay "${FILE}" 2>/dev/null && exit 0
+fi
+if command -v aplay >/dev/null 2>&1; then
+    aplay -q "${FILE}" >/dev/null 2>&1 && exit 0
+fi
+exit 0

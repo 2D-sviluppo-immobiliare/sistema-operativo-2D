@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=2D OS - Suono di avvio
+Comment=Riproduce il suono di avvio 2D
+Exec=2d-bootsound
+Icon=audio-volume-high
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,22 @@
+MARCHIO 2D
+==========
+
+Metti qui il logo ufficiale, in uno di questi due formati:
+
+    brand/logo/logo.svg      (preferito: vettoriale, sfondo trasparente)
+    brand/logo/logo.png      (sfondo trasparente, altezza >= 512 px)
+
+Alla build successiva il logo viene:
+
+  1. convertito in PNG a 220 px di altezza per la schermata di avvio
+     (/usr/share/plymouth/themes/2d/logo.png)
+  2. copiato in /usr/share/2d/logo.svg o logo.png per il resto del sistema
+
+Se nessuno dei due file esiste, viene usato il marchio provvisorio
+`2d-wordmark.svg` presente in questa cartella.
+
+REGOLE
+------
+- Sfondo trasparente: la schermata di avvio è blu notte.
+- Il logo deve restare leggibile a 220 px di altezza.
+- Non modificare la geometria del marchio: viene usato così com'è.

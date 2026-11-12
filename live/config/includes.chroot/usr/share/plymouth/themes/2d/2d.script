@@ -1,0 +1,147 @@
+--
+-- 2D OS - tema Plymouth (plugin "script")
+--
+-- Scelte di progetto:
+--  * nessuna dipendenza da font o da immagini esterne obbligatorie
+--  * sfondo blu notte, accenti oro
+--  * anello pulsante al centro + barra di avanzamento a punti
+--  * il tema non blocca l'avvio se un asset manca
+--
+
+local SW = 1024
+local SH = 768
+pcall(function() SW = Window.GetWidth() end)
+pcall(function() SH = Window.GetHeight() end)
+
+-- Sfondo: blu notte (gradiente verticale)
+pcall(function() Window.SetBackgroundTopColor(0.043, 0.086, 0.145) end)
+pcall(function() Window.SetBackgroundBottomColor(0.012, 0.024, 0.043) end)
+
+local GOLD = { 0.902, 0.769, 0.471 }
+
+-- ---------------------------------------------------------------------------
+-- Marchio "2D" (se il motore grafico non supporta il testo, si continua senza)
+-- ---------------------------------------------------------------------------
+local ok, logo = pcall(function()
+    return Image.Text("2D", GOLD[1], GOLD[2], GOLD[3], 1.0)
+end)
+if ok and logo then
+    local s = Sprite(logo)
+    s:SetX(SW / 2 - logo:GetWidth() / 2)
+    s:SetY(SH / 2 - logo:GetHeight() / 2)
+end
+
+-- ---------------------------------------------------------------------------
+-- Anello pulsante
+-- ---------------------------------------------------------------------------
+local ring_image = nil
+local ring_sprite = nil
+local ok_ring, img = pcall(function() return Image("ring.png") end)
+if ok_ring and img then
+    ring_image = img
+    ring_sprite = Sprite(ring_image)
+    ring_sprite:SetX(SW / 2 - ring_image:GetWidth() / 2)
+    ring_sprite:SetY(SH / 2 - ring_image:GetHeight() / 2)
+    ring_sprite:SetOpacity(0.6)
+end
+
+-- ---------------------------------------------------------------------------
+-- Indicatore di avanzamento a punti
+-- ---------------------------------------------------------------------------
+local DOTS = 24
+local dot_image = nil
+local dots = {}
+local ok_dot, dotimg = pcall(function() return Image("dot.png") end)
+if ok_dot and dotimg then
+    dot_image = dotimg
+    local spacing = 14
+    local total = (DOTS - 1) * spacing
+    for i = 0, DOTS - 1 do
+        local s = Sprite(dot_image)
+        s:SetX(SW / 2 - total / 2 + i * spacing - dot_image:GetWidth() / 2)
+        s:SetY(SH / 2 + 120)
+        s:SetOpacity(0.18)
+        dots[i + 1] = s
+    end
+end
+
+local progress = 0
+local mode = "boot"
+
+local function render_dots()
+    if #dots == 0 then return end
+    local lit = progress * DOTS
+    for i = 1, DOTS do
+        if i <= lit then
+            dots[i]:SetOpacity(1.0)
+        else
+            dots[i]:SetOpacity(0.18)
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Callback Plymouth
+-- ---------------------------------------------------------------------------
+pcall(function()
+    Plymouth.SetBootProgressFunction(function(time, duration)
+        if duration and duration > 0 then
+            progress = time / duration
+        else
+            progress = 0
+        end
+        if progress > 1 then progress = 1 end
+        render_dots()
+    end)
+end)
+
+local frames = 0
+pcall(function()
+    Plymouth.SetRefreshFunction(function()
+        frames = frames + 1
+        if ring_sprite then
+            local phase = frames % 150
+            local a
+            if phase < 75 then
+                a = phase / 75
+            else
+                a = (150 - phase) / 75
+            end
+            ring_sprite:SetOpacity(0.35 + 0.55 * a)
+        end
+    end)
+end)
+
+pcall(function()
+    Plymouth.SetUpdateStatusFunction(function(text)
+        -- Il tema resta volutamente privo di testo di stato:
+        -- lo stato e' comunicato dai punti di avanzamento.
+    end)
+end)
+
+pcall(function()
+    Plymouth.SetMessageFunction(function(text) end)
+end)
+
+-- Richiesta password (es. persistenza cifrata in una versione futura).
+-- Il prompt testuale e' delegato al sistema: qui evitiamo di bloccare l'avvio.
+pcall(function()
+    Plymouth.SetDisplayPasswordFunction(function(prompt, entry) end)
+end)
+
+pcall(function()
+    Plymouth.SetDisplayQuestionFunction(function(prompt, entry) end)
+end)
+
+pcall(function()
+    Plymouth.SetDisplayNormalFunction(function(prompt, entry) end)
+end)
+
+pcall(function()
+    mode = Plymouth.GetMode()
+end)
+
+if mode == "shutdown" then
+    if ring_sprite then ring_sprite:SetOpacity(0.25) end
+    for i = 1, DOTS do dots[i]:SetOpacity(0.15) end
+end

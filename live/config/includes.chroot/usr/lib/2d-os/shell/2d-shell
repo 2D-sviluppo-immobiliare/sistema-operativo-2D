@@ -1,0 +1,755 @@
+#!/usr/bin/python3
+"""
+2D Shell - livello desktop proprietario di 2D OS.
+
+Sostituisce xfdesktop nel profilo "immersive": disegna sfondo, icone animate
+in ingresso, selezione, avvio applicazioni e menu contestuale.
+
+Principi di progetto:
+  * nessun timer attivo quando la schermata e' ferma (CPU bassa);
+  * ogni errore viene registrato su ~/.cache/2d-shell.log e non deve
+    impedire l'uso del sistema;
+  * se la shell termina, 2d-mode ripristina xfdesktop.
+
+Uso:
+    2d-shell                 avvia la shell
+    2d-shell --list          elenca le icone che verrebbero mostrate
+    2d-shell --screenshot F  disegna un fotogramma e lo salva in F (test)
+"""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import os
+import subprocess
+import sys
+import time
+import traceback
+
+import cairo
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("Pango", "1.0")
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango, PangoCairo
+
+APP_NAME = "2D Shell"
+VERSION = "0.2.0"
+
+CONFIG_PATHS = (
+    "/etc/2d/shell.conf",
+    os.path.expanduser("~/.config/2d/shell.conf"),
+)
+LOG_PATH = os.path.expanduser("~/.cache/2d-shell.log")
+# Variabile d'ambiente utile per i test fuori dal sistema installato
+WALLPAPER = os.environ.get(
+    "TWO_D_WALLPAPER", "/usr/share/backgrounds/2d/2d-wallpaper.svg"
+)
+
+GOLD = (0.902, 0.769, 0.471)
+GOLD_DIM = (0.902, 0.769, 0.471, 0.30)
+TEXT = (0.85, 0.90, 0.94)
+TEXT_DIM = (0.56, 0.65, 0.73)
+NAVY_TOP = (0.043, 0.102, 0.169)
+NAVY_BOTTOM = (0.016, 0.031, 0.051)
+
+DEFAULT_APPS = (
+    "2d-hwreport.desktop",
+    "chromium.desktop",
+    "thunar.desktop",
+    "xfce4-terminal.desktop",
+    "mousepad.desktop",
+    "ristretto.desktop",
+    "xfce4-settings-manager.desktop",
+)
+
+
+# ---------------------------------------------------------------------------
+# utilita'
+# ---------------------------------------------------------------------------
+def log(message: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {message}\n")
+    except Exception:
+        pass
+
+
+def ease_out_cubic(p: float) -> float:
+    return 1.0 - (1.0 - p) ** 3
+
+
+def second_tick(n: int) -> bool:
+    """Vero ogni 4 tentativi (circa un secondo): limita il rumore nei log."""
+    return n % 4 == 1
+
+
+def rounded_rect(cr, x: float, y: float, w: float, h: float, r: float) -> None:
+    r = min(r, w / 2, h / 2)
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -1.5707963, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, 1.5707963)
+    cr.arc(x + r, y + h - r, r, 1.5707963, 3.1415927)
+    cr.arc(x + r, y + r, r, 3.1415927, 4.7123890)
+    cr.close_path()
+
+
+# ---------------------------------------------------------------------------
+# configurazione
+# ---------------------------------------------------------------------------
+class ShellConfig:
+    def __init__(self) -> None:
+        parser = configparser.ConfigParser()
+        parser.read(CONFIG_PATHS)
+        section = parser["shell"] if parser.has_section("shell") else {}
+
+        self.icon_size = int(section.get("icon_size", 64))
+        self.cell_w = int(section.get("cell_width", 116))
+        self.cell_h = int(section.get("cell_height", 124))
+        self.margin = int(section.get("margin", 40))
+        self.animation_ms = int(section.get("animation_ms", 700))
+        self.stagger_ms = int(section.get("stagger_ms", 55))
+        self.slide_px = int(section.get("slide_px", 150))
+        self.show_desktop_files = str(section.get("show_desktop_files", "1")).strip() != "0"
+        self.hud = str(section.get("hud", "1")).strip() != "0"
+
+        apps = section.get("apps", "")
+        ids = [a.strip() for a in apps.split(",") if a.strip()] or list(DEFAULT_APPS)
+        self.apps = ids
+
+
+# ---------------------------------------------------------------------------
+# voci del desktop
+# ---------------------------------------------------------------------------
+class Item:
+    __slots__ = ("app", "label", "icon", "x", "y", "side", "index")
+
+    def __init__(self, app, label, icon, index: int) -> None:
+        self.app = app
+        self.label = label
+        self.icon = icon
+        self.index = index
+        self.x = 0.0
+        self.y = 0.0
+        self.side = -1 if index % 2 == 0 else 1
+
+
+def load_icon(app, size: int):
+    theme = Gtk.IconTheme.get_default()
+    try:
+        icon = app.get_icon()
+    except Exception:
+        icon = None
+
+    if icon is not None:
+        try:
+            info = theme.lookup_by_gicon(icon, size, Gtk.IconLookupFlags.FORCE_SIZE)
+            if info is not None:
+                return info.load_icon()
+        except Exception as exc:  # icona non disponibile: si continua
+            log(f"icona non caricata ({exc})")
+
+    for fallback in ("application-x-executable", "application-default-icon"):
+        try:
+            info = theme.lookup_icon(fallback, size, Gtk.IconLookupFlags.FORCE_SIZE)
+            if info is not None:
+                return info.load_icon()
+        except Exception:
+            continue
+    return None
+
+
+def discover(config: ShellConfig):
+    """Restituisce le voci da mostrare, senza duplicati."""
+    seen = set()
+    items = []
+
+    def add(app_id: str) -> None:
+        if app_id in seen:
+            return
+        # Gio.DesktopAppInfo.new() solleva TypeError se il file non esiste:
+        # un solo .desktop mancante non deve impedire l'avvio della shell.
+        try:
+            app = Gio.DesktopAppInfo.new(app_id)
+        except Exception as exc:
+            log(f"voce ignorata, {app_id}: {exc}")
+            return
+        if app is None:
+            log(f"voce ignorata, .desktop non trovato: {app_id}")
+            return
+        try:
+            if not app.should_show():
+                return
+        except Exception:
+            pass
+        label = app.get_display_name() or app.get_name() or app_id
+        icon = load_icon(app, config.icon_size)
+        seen.add(app_id)
+        items.append(Item(app, label, icon, len(items)))
+
+    # 1. file .desktop presenti sul Desktop dell'utente
+    if config.show_desktop_files:
+        desktop_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP)
+        if desktop_dir and os.path.isdir(desktop_dir):
+            for name in sorted(os.listdir(desktop_dir)):
+                if not name.endswith(".desktop"):
+                    continue
+                path = os.path.join(desktop_dir, name)
+                try:
+                    app = Gio.DesktopAppInfo.new_from_filename(path)
+                except Exception:
+                    app = None
+                if app is not None and app.get_id() not in seen:
+                    label = app.get_display_name() or app.get_name() or name
+                    icon = load_icon(app, config.icon_size)
+                    seen.add(app.get_id())
+                    items.append(Item(app, label, icon, len(items)))
+
+    # 2. applicazioni curate dalla configurazione
+    for app_id in config.apps:
+        add(app_id)
+
+    return items
+
+
+# ---------------------------------------------------------------------------
+# finestra desktop
+# ---------------------------------------------------------------------------
+class DesktopShell(Gtk.Window):
+    def __init__(self, config: ShellConfig, screenshot: str | None = None,
+                 screenshot_delay: int = 1800) -> None:
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+        self.config = config
+        self.screenshot = screenshot
+        self.screenshot_delay = screenshot_delay
+        self.items = []
+        self.hover = -1
+        self.pressed = -1
+        self.width = 1024
+        self.height = 768
+        self.background = None
+        self.anim_start = 0.0
+        self.animating = False
+
+        # HUD integrato (in alternativa a conky)
+        self.clock = ""
+        self.datestr = ""
+        self.hostname = os.uname().nodename
+        self.cpu = 0.0
+        self.mem = 0.0
+        self._prev_idle = 0
+        self._prev_total = 0
+
+        self.set_title(APP_NAME)
+        self.set_decorated(False)
+        self.set_resizable(False)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_accept_focus(True)
+        self.set_app_paintable(True)
+
+        screen = self.get_screen()
+
+        # L'hint DESKTOP ha senso solo con un window manager attivo.
+        # Senza WM la finestra puo' restare non mappata: in quel caso
+        # (ambienti di test, avvio senza sessione) si usa una finestra normale.
+        wm_present = False
+        try:
+            wm_present = screen.supports_net_wm_hint(
+                Gdk.Atom.intern("_NET_SUPPORTING_WM_CHECK", False)
+            )
+        except Exception:
+            wm_present = False
+
+        if wm_present:
+            try:
+                self.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
+            except Exception:
+                log("tipo finestra DESKTOP non disponibile")
+            self.set_keep_below(True)
+        else:
+            log("nessun window manager: uso una finestra normale")
+
+        try:
+            visual = screen.get_rgba_visual()
+            if visual is not None:
+                self.set_visual(visual)
+        except Exception:
+            pass
+
+        monitor = screen.get_primary_monitor()
+        geometry = screen.get_monitor_geometry(monitor)
+        self.width, self.height = geometry.width, geometry.height
+        self.set_default_size(self.width, self.height)
+        self.move(geometry.x, geometry.y)
+
+        self.area = Gtk.DrawingArea()
+        self.area.set_size_request(self.width, self.height)
+        self.area.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK
+            | Gdk.EventMask.BUTTON_RELEASE_MASK
+            | Gdk.EventMask.POINTER_MOTION_MASK
+            | Gdk.EventMask.LEAVE_NOTIFY_MASK
+        )
+        self.area.connect("draw", self.on_draw)
+        self.area.connect("button-press-event", self.on_button_press)
+        self.area.connect("button-release-event", self.on_button_release)
+        self.area.connect("motion-notify-event", self.on_motion)
+        self.area.connect("leave-notify-event", self.on_leave)
+        self.add(self.area)
+
+        self.connect("destroy", Gtk.main_quit)
+        self.connect("key-press-event", self.on_key)
+
+        self.reload_items()
+        self.load_background()
+        self.restart_animation()
+
+        if config.hud:
+            self.update_hud()
+            GLib.timeout_add(2000, self.hud_tick)
+
+        if self.screenshot:
+            GLib.timeout_add(self.screenshot_delay, self.take_screenshot)
+
+    # -- dati ------------------------------------------------------------
+    def reload_items(self) -> None:
+        self.items = discover(self.config)
+        self.layout_items()
+        log(f"caricate {len(self.items)} voci")
+
+    def layout_items(self) -> None:
+        cfg = self.config
+        usable_h = max(cfg.cell_h, self.height - 2 * cfg.margin)
+        rows = max(1, usable_h // cfg.cell_h)
+        for index, item in enumerate(self.items):
+            column = index // rows
+            row = index % rows
+            item.x = cfg.margin + column * cfg.cell_w
+            item.y = cfg.margin + row * cfg.cell_h
+
+    def load_background(self) -> None:
+        try:
+            self.background = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                WALLPAPER, self.width, self.height, False
+            )
+        except Exception as exc:
+            log(f"sfondo non caricato ({exc}); uso il gradiente")
+            self.background = None
+
+    # -- animazione ------------------------------------------------------
+    def restart_animation(self) -> None:
+        self.anim_start = time.monotonic()
+        if not self.animating:
+            self.animating = True
+            GLib.timeout_add(16, self.tick)
+
+    def total_duration(self) -> float:
+        cfg = self.config
+        return (cfg.animation_ms + cfg.stagger_ms * max(0, len(self.items) - 1)) / 1000.0
+
+    def tick(self) -> bool:
+        if time.monotonic() - self.anim_start >= self.total_duration() + 0.15:
+            self.animating = False
+            self.area.queue_draw()
+            return False
+        self.area.queue_draw()
+        return True
+
+    def item_progress(self, item: Item, now: float) -> float:
+        cfg = self.config
+        delay = (item.index * cfg.stagger_ms) / 1000.0
+        duration = cfg.animation_ms / 1000.0
+        elapsed = now - self.anim_start - delay
+        if elapsed <= 0:
+            return 0.0
+        if elapsed >= duration:
+            return 1.0
+        return ease_out_cubic(elapsed / duration)
+
+    # -- disegno ---------------------------------------------------------
+    def on_draw(self, _widget, cr) -> bool:
+        now = time.monotonic()
+
+        if self.background is not None:
+            Gdk.cairo_set_source_pixbuf(cr, self.background, 0, 0)
+            cr.paint()
+        else:
+            gradient = __import__("cairo").LinearGradient(0, 0, 0, self.height)
+            gradient.add_color_stop_rgb(0, *NAVY_TOP)
+            gradient.add_color_stop_rgb(1, *NAVY_BOTTOM)
+            cr.set_source(gradient)
+            cr.paint()
+
+        # velo in alto: rende leggibili le etichette
+        cr.set_source_rgba(0, 0, 0, 0.18)
+        cr.rectangle(0, 0, self.width, self.height * 0.22)
+        cr.fill()
+
+        for index, item in enumerate(self.items):
+            progress = self.item_progress(item, now)
+            if progress <= 0.0:
+                continue
+            offset = item.side * self.config.slide_px * (1.0 - progress)
+            self.draw_item(cr, item, index, progress, offset)
+
+        self.draw_hud(cr)
+
+        return False
+
+    def draw_item(self, cr, item: Item, index: int, progress: float, offset: float) -> None:
+        cfg = self.config
+        size = cfg.icon_size
+        x = item.x + offset
+        y = item.y
+        cell_w = cfg.cell_w - 10
+        cell_h = cfg.cell_h - 8
+        alpha = max(0.0, min(1.0, progress))
+
+        hovered = index == self.hover and progress >= 1.0
+        pressed = index == self.pressed
+
+        # ombra del riquadro
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.30 * alpha)
+        rounded_rect(cr, x + 1, y + 3, cell_w, cell_h, 14)
+        cr.fill()
+
+        # vetro del riquadro
+        tile = cairo.LinearGradient(0, y, 0, y + cell_h)
+        if hovered or pressed:
+            tile.add_color_stop_rgba(0.0, 0.17, 0.29, 0.41, 0.92 * alpha)
+            tile.add_color_stop_rgba(1.0, 0.07, 0.15, 0.23, 0.92 * alpha)
+        else:
+            tile.add_color_stop_rgba(0.0, 0.08, 0.16, 0.25, 0.55 * alpha)
+            tile.add_color_stop_rgba(1.0, 0.04, 0.09, 0.15, 0.55 * alpha)
+        rounded_rect(cr, x, y, cell_w, cell_h, 14)
+        cr.set_source(tile)
+        cr.fill()
+
+        # filo luminoso sul bordo superiore
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.10 * alpha)
+        cr.set_line_width(1.0)
+        cr.move_to(x + 14, y + 1.2)
+        cr.line_to(x + cell_w - 14, y + 1.2)
+        cr.stroke()
+
+        # bordo: oro pieno in hover, appena percettibile a riposo
+        if hovered or pressed:
+            cr.set_source_rgba(GOLD[0], GOLD[1], GOLD[2], 0.85 * alpha)
+            cr.set_line_width(1.7)
+        else:
+            cr.set_source_rgba(GOLD[0], GOLD[1], GOLD[2], 0.16 * alpha)
+            cr.set_line_width(1.0)
+        rounded_rect(cr, x + 0.5, y + 0.5, cell_w - 1, cell_h - 1, 14)
+        cr.stroke()
+
+        # icona
+        if item.icon is not None:
+            icon_w = item.icon.get_width()
+            icon_h = item.icon.get_height()
+            Gdk.cairo_set_source_pixbuf(
+                cr, item.icon, x + (cell_w - icon_w) / 2, y + 14
+            )
+            cr.paint_with_alpha(alpha)
+        else:
+            cr.set_source_rgba(TEXT_DIM[0], TEXT_DIM[1], TEXT_DIM[2], alpha)
+            cr.arc(x + cell_w / 2, y + 14 + size / 2, size / 3, 0, 6.2831853)
+            cr.fill()
+
+        # etichetta con ombra
+        layout = self.create_pango_layout(item.label)
+        layout.set_width(int((cell_w - 8) * Pango.SCALE))
+        layout.set_ellipsize(Pango.EllipsizeMode.END)
+        layout.set_alignment(Pango.Alignment.CENTER)
+        description = Pango.FontDescription("DejaVu Sans 9")
+        description.set_weight(Pango.Weight.SEMIBOLD)
+        layout.set_font_description(description)
+
+        label_y = y + 14 + size + 12
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.55 * alpha)
+        cr.move_to(x + 4, label_y + 1)
+        PangoCairo.show_layout(cr, layout)
+        cr.set_source_rgba(TEXT[0], TEXT[1], TEXT[2], alpha)
+        cr.move_to(x + 4, label_y)
+        PangoCairo.show_layout(cr, layout)
+
+    # -- HUD -----------------------------------------------------------------
+    def text(self, cr, x, y, value, size=9, color=TEXT, bold=False,
+             alpha=1.0, width=None) -> None:
+        layout = self.create_pango_layout(value)
+        description = Pango.FontDescription(f"DejaVu Sans {size}")
+        if bold:
+            description.set_weight(Pango.Weight.BOLD)
+        layout.set_font_description(description)
+        if width:
+            layout.set_width(int(width * Pango.SCALE))
+            layout.set_ellipsize(Pango.EllipsizeMode.END)
+        cr.move_to(x, y)
+        cr.set_source_rgba(color[0], color[1], color[2], alpha)
+        PangoCairo.show_layout(cr, layout)
+
+    def bar(self, cr, x, y, w, h, value, label) -> None:
+        self.text(cr, x, y - 14, f"{label}   {int(value * 100)}%", 8, TEXT_DIM)
+        rounded_rect(cr, x, y, w, h, h / 2)
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.09)
+        cr.fill()
+        filled = max(h, w * max(0.0, min(1.0, value)))
+        rounded_rect(cr, x, y, filled, h, h / 2)
+        cr.set_source_rgba(GOLD[0], GOLD[1], GOLD[2], 0.9)
+        cr.fill()
+
+    def read_cpu(self) -> float:
+        try:
+            with open("/proc/stat", "r", encoding="utf-8") as handle:
+                fields = [int(v) for v in handle.readline().split()[1:]]
+            idle = fields[3] + (fields[4] if len(fields) > 4 else 0)
+            total = sum(fields)
+            delta_idle = idle - self._prev_idle
+            delta_total = total - self._prev_total
+            self._prev_idle, self._prev_total = idle, total
+            if delta_total <= 0:
+                return self.cpu
+            return max(0.0, min(1.0, 1.0 - delta_idle / delta_total))
+        except Exception:
+            return self.cpu
+
+    def read_mem(self) -> float:
+        try:
+            values = {}
+            with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+                for line in handle:
+                    key, _, rest = line.partition(":")
+                    values[key] = int(rest.strip().split()[0])
+            total = values.get("MemTotal", 0)
+            available = values.get("MemAvailable", 0)
+            if total <= 0:
+                return 0.0
+            return max(0.0, min(1.0, 1.0 - available / total))
+        except Exception:
+            return 0.0
+
+    def update_hud(self) -> None:
+        self.clock = time.strftime("%H:%M")
+        self.datestr = time.strftime("%a %d %b").upper()
+        self.cpu = self.read_cpu()
+        self.mem = self.read_mem()
+
+    def hud_tick(self) -> bool:
+        if not self.config.hud:
+            return True
+        self.update_hud()
+        self.area.queue_draw()
+        return True
+
+    def draw_hud(self, cr) -> None:
+        if not self.config.hud:
+            return
+
+        w, h = 272, 172
+        x = self.width - w - 30
+        y = 30
+
+        panel = cairo.LinearGradient(x, y, x, y + h)
+        panel.add_color_stop_rgba(0.0, 0.05, 0.11, 0.18, 0.82)
+        panel.add_color_stop_rgba(1.0, 0.02, 0.05, 0.09, 0.78)
+        rounded_rect(cr, x, y, w, h, 16)
+        cr.set_source(panel)
+        cr.fill()
+
+        cr.set_source_rgba(GOLD[0], GOLD[1], GOLD[2], 0.22)
+        cr.set_line_width(1.0)
+        rounded_rect(cr, x + 0.5, y + 0.5, w - 1, h - 1, 16)
+        cr.stroke()
+
+        self.text(cr, x + 18, y + 14, "2D OS", 11, GOLD, bold=True)
+        self.text(cr, x + 96, y + 16, self.hostname, 8, TEXT_DIM, width=155)
+
+        self.text(cr, x + 16, y + 34, self.clock, 28, TEXT, bold=True)
+        self.text(cr, x + 18, y + 76, self.datestr, 8, TEXT_DIM)
+
+        self.bar(cr, x + 18, y + 108, w - 36, 5, self.cpu, "CPU")
+        self.bar(cr, x + 18, y + 146, w - 36, 5, self.mem, "RAM")
+
+    # -- interazione -----------------------------------------------------
+    def item_at(self, mx: float, my: float):
+        cfg = self.config
+        for index, item in enumerate(self.items):
+            if item.y <= my <= item.y + cfg.cell_h - 8 and \
+               item.x <= mx <= item.x + cfg.cell_w - 10:
+                return index
+        return -1
+
+    def on_motion(self, _widget, event) -> bool:
+        index = self.item_at(event.x, event.y)
+        if index != self.hover:
+            self.hover = index
+            self.area.queue_draw()
+        return False
+
+    def on_leave(self, _widget, _event) -> bool:
+        if self.hover != -1:
+            self.hover = -1
+            self.area.queue_draw()
+        return False
+
+    def on_button_press(self, _widget, event) -> bool:
+        index = self.item_at(event.x, event.y)
+
+        if event.button == 3:
+            self.show_menu(event)
+            return True
+
+        if event.button != 1:
+            return False
+
+        self.pressed = index
+        self.area.queue_draw()
+
+        if index >= 0 and event.type == Gdk.EventType._2BUTTON_PRESS:
+            self.launch(self.items[index])
+        return True
+
+    def on_button_release(self, _widget, event) -> bool:
+        if event.button == 1 and self.pressed != -1:
+            self.pressed = -1
+            self.area.queue_draw()
+        return False
+
+    def on_key(self, _widget, event) -> bool:
+        if event.keyval in (Gdk.KEY_F5,):
+            self.reload_items()
+            self.restart_animation()
+            return True
+        if event.keyval in (Gdk.KEY_Escape,):
+            self.hover = -1
+            self.pressed = -1
+            self.area.queue_draw()
+            return True
+        return False
+
+    def launch(self, item: Item) -> None:
+        self.pressed = -1
+        self.area.queue_draw()
+        try:
+            item.app.launch([], None)
+            log(f"avviata: {item.label}")
+        except Exception as exc:
+            log(f"avvio fallito per {item.label}: {exc}")
+
+    def show_menu(self, event) -> None:
+        menu = Gtk.Menu()
+
+        for label, command in (
+            ("Profilo grafico: Classico", ["2d-mode", "classic"]),
+            ("Profilo grafico: Immersivo", ["2d-mode", "immersive"]),
+            ("Profilo grafico: Automatico", ["2d-mode", "reset"]),
+        ):
+            entry = Gtk.MenuItem(label=label)
+            entry.connect("activate", lambda _w, c=command: spawn(c))
+            menu.append(entry)
+
+        menu.append(Gtk.SeparatorMenuItem())
+
+        for label, command in (
+            ("Rapporto hardware", ["xfce4-terminal", "--command=2d-hwreport"]),
+            ("Terminale", ["xfce4-terminal"]),
+            ("Aggiorna icone", ["/usr/lib/2d-os/shell/2d-shell", "--reload-marker"]),
+        ):
+            entry = Gtk.MenuItem(label=label)
+            if command[-1] == "--reload-marker":
+                entry.connect("activate", lambda _w: (self.reload_items(), self.restart_animation()))
+            else:
+                entry.connect("activate", lambda _w, c=command: spawn(c))
+            menu.append(entry)
+
+        menu.show_all()
+        try:
+            menu.popup_at_pointer(event)
+        except Exception:
+            menu.popup(None, None, None, None, event.button, event.time)
+
+    # -- test ------------------------------------------------------------
+    def take_screenshot(self) -> bool:
+        try:
+            window = self.get_window()
+            pixbuf = Gdk.pixbuf_get_from_window(window, 0, 0, self.width, self.height)
+            if pixbuf is not None:
+                pixbuf.savev(self.screenshot, "png", [], [])
+                print(f"screenshot salvato: {self.screenshot}")
+                sys.stdout.flush()
+        except Exception as exc:
+            print(f"screenshot non riuscito: {exc}", file=sys.stderr)
+        Gtk.main_quit()
+        return False
+
+
+def spawn(command) -> None:
+    try:
+        subprocess.Popen(command, start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as exc:
+        log(f"comando non eseguito {command}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="2D OS desktop shell")
+    parser.add_argument("--list", action="store_true", help="elenca le icone")
+    parser.add_argument("--screenshot", metavar="FILE", help="salva un fotogramma")
+    parser.add_argument("--screenshot-delay", type=int, default=1800,
+                        help="millisecondi prima dello scatto (default 1800)")
+    parser.add_argument("--version", action="store_true")
+    args = parser.parse_args(argv)
+
+    if args.version:
+        print(f"{APP_NAME} {VERSION}")
+        return 0
+
+    config = ShellConfig()
+
+    if args.list:
+        for item in discover(config):
+            print(f"{item.index:2d}  {item.label:<28} {item.app.get_id()}")
+        return 0
+
+    shell = DesktopShell(config, screenshot=args.screenshot,
+                         screenshot_delay=args.screenshot_delay)
+    shell.show_all()
+
+    # Con l'hint DESKTOP e senza window manager la finestra puo' restare
+    # non mappata: la mappiamo esplicitamente, riprovando finche' non e' visibile.
+    attempts = {"n": 0}
+
+    def _ensure_mapped():
+        attempts["n"] += 1
+        window = shell.get_window()
+        if window is None:
+            return attempts["n"] < 40
+
+        if not window.is_visible():
+            window.map()
+            window.raise_()
+
+        if second_tick(attempts["n"]):
+            log(f"map: tentativo {attempts['n']} visibile={window.is_visible()} "
+                f"stato={window.get_state()}")
+
+        if window.is_visible() or attempts["n"] >= 40:
+            return False
+        return True
+
+    GLib.timeout_add(250, _ensure_mapped)
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:
+        log("errore fatale:\n" + traceback.format_exc())
+        raise

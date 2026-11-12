@@ -1,0 +1,114 @@
+#!/bin/bash
+#
+# 2d-hwreport - rapporto hardware di 2D OS
+#
+# Genera un file di testo con tutte le informazioni utili per valutare
+# la compatibilita' di una macchina (Acer, HP o qualsiasi altro PC).
+#
+# Uso:  2d-hwreport            (salva in ~/2d-hwreport-<host>-<data>.txt)
+#       2d-hwreport --stdout   (stampa soltanto)
+#
+set -u
+
+OUT_MODE="file"
+[ "${1:-}" = "--stdout" ] && OUT_MODE="stdout"
+
+if [ "${OUT_MODE}" = "file" ]; then
+    OUT="${HOME}/2d-hwreport-$(hostname)-$(date +%Y%m%d-%H%M).txt"
+    exec > >(tee "${OUT}") 2>&1
+fi
+
+hr() { printf '\n%s\n' "----------------------------------------------------------------"; }
+sec() { hr; printf '== %s\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+echo "2D OS - RAPPORTO HARDWARE"
+echo "Generato: $(date -Is)"
+echo "Host: $(hostname)"
+
+sec "SISTEMA"
+echo "Kernel : $(uname -srm)"
+if [ -r /etc/os-release ]; then . /etc/os-release; echo "Distro : ${PRETTY_NAME:-?}"; fi
+echo "Uptime : $(uptime -p 2>/dev/null || true)"
+echo "Avvio da: $(findmnt -n -o SOURCE / 2>/dev/null || echo '?')"
+[ -r /run/live/medium ] && echo "Medium live: $(cat /run/live/medium 2>/dev/null)"
+
+sec "CPU"
+if have lscpu; then lscpu; else grep -m1 'model name' /proc/cpuinfo; fi
+echo
+cpuflags="$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null || true)"
+case "${cpuflags}" in *vmx*|*svm*) virt="SI" ;; *) virt="NO" ;; esac
+case "${cpuflags}" in *aes*) aesni="SI" ;; *) aesni="NO" ;; esac
+echo "Virtualizzazione HW : ${virt}"
+echo "AES-NI (cifratura)  : ${aesni}"
+echo "Core / thread       : $(nproc) thread logici"
+
+sec "MEMORIA"
+free -h
+echo
+[ -e /proc/swaps ] && { echo "Swap:"; cat /proc/swaps; }
+
+sec "SCHEDA MADRE E BIOS"
+if have dmidecode && [ "$(id -u)" -eq 0 ]; then
+    dmidecode -t system -t bios -t baseboard 2>/dev/null | grep -E 'Manufacturer|Product Name|Version|Release Date|Serial' | sed 's/^[[:space:]]*//'
+else
+    echo "(esegui con sudo per i dettagli DMI)"
+    [ -r /sys/class/dmi/id/product_name ] && echo "Product: $(cat /sys/class/dmi/id/product_name)"
+    [ -r /sys/class/dmi/id/bios_version ] && echo "BIOS   : $(cat /sys/class/dmi/id/bios_version)"
+fi
+echo "Firmware: $( [ -d /sys/firmware/efi ] && echo UEFI || echo 'BIOS legacy' )"
+echo "Secure Boot: $(have mokutil && mokutil --sb-state 2>/dev/null || echo 'n/d')"
+
+sec "SCHEDE PCI (con driver in uso)"
+if have lspci; then lspci -nnk; else echo "lspci non disponibile"; fi
+
+sec "ACCELERAZIONE GRAFICA"
+if have glxinfo; then
+    glxinfo -B 2>/dev/null | grep -Ei 'OpenGL renderer|OpenGL version|Device|Accelerated|Video memory' || \
+        glxinfo 2>/dev/null | grep -Ei 'OpenGL renderer string|OpenGL version string'
+else
+    echo "glxinfo non disponibile (installare mesa-utils)"
+fi
+echo
+for card in /sys/class/drm/card*/status; do
+    [ -e "${card}" ] && echo "$(dirname "${card}" | xargs basename): $(cat "${card}")"
+done 2>/dev/null
+echo
+if have xrandr; then DISPLAY="${DISPLAY:-:0}" xrandr --query 2>/dev/null | head -20; fi
+
+sec "AUDIO"
+if have lspci; then lspci -nn | grep -i audio || echo "nessun controller audio PCI"; fi
+have aplay && aplay -l 2>/dev/null | head -20
+
+sec "RETE"
+if have nmcli; then nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device 2>/dev/null; fi
+if have ip; then echo; ip -brief addr; fi
+for i in /sys/class/net/*; do
+    dev=$(basename "$i")
+    echo "  ${dev}: speed=$(cat "$i/speed" 2>/dev/null || echo '-') Mbps  mtu=$(cat "$i/mtu")"
+done 2>/dev/null
+if have rfkill; then echo; rfkill list; fi
+
+sec "USB (velocita' del bus)"
+if have lsusb; then
+    echo "Dispositivi:"
+    lsusb
+    echo
+    echo "Albero USB:"
+    lsusb -t 2>/dev/null
+fi
+
+sec "MEMORIA DI MASSA"
+if have lsblk; then lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS,MODEL; fi
+
+sec "SENSORI"
+have sensors && sensors 2>/dev/null | head -30
+
+sec "RAPPORTO INXI (sintetico)"
+have inxi && inxi -Fxxxz 2>/dev/null
+
+hr
+if [ "${OUT_MODE}" = "file" ]; then
+    echo "Rapporto salvato in: ${OUT}"
+    echo "Copia questo file nel repository, cartella docs/lab/."
+fi

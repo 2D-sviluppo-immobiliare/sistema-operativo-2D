@@ -1,0 +1,29 @@
+# Artefatti di build live-build
+live/binary/
+live/chroot/
+live/cache/
+live/.build/
+live/config/binary/
+live/config/bootstrap/
+live/config/chroot/
+live/config/common
+live/config/source/
+live/*.iso
+live/*.log
+live/*.contents
+live/*.files
+live/*.packages
+live/.stage/
+
+# Hook e file generati da `lb config` (symlink verso /usr/share/live/build)
+live/config/hooks/live/0010-disable-kexec-tools.hook.chroot
+live/config/hooks/live/0050-disable-sysvinit-tmpfs.hook.chroot
+live/config/includes.chroot/*/live/config/*
+
+# Output finale
+dist/
+
+# Temporanei
+*.tmp
+*.swp
+.DS_Store

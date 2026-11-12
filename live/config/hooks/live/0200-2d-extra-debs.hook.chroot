@@ -1,0 +1,22 @@
+#!/bin/sh
+# 0200-2d-extra-debs.hook.chroot
+#
+# Installa eventuali pacchetti .deb forniti localmente
+# (cartella vendor/debs del repository, es. VS Code).
+set -eu
+
+DIR=/opt/2d/packages
+if [ -d "${DIR}" ] && ls "${DIR}"/*.deb >/dev/null 2>&1; then
+    echo "[2D] Installazione pacchetti locali aggiuntivi"
+    # Le dipendenze non risolvibili localmente vengono risolte dai repository:
+    # questo permette di includere VS Code senza configurarne il repository.
+    if [ -z "$(ls -A /var/lib/apt/lists 2>/dev/null)" ]; then
+        apt-get update -qq || true
+    fi
+    apt-get -y install --no-install-recommends "${DIR}"/*.deb || {
+        echo "[2D] ATTENZIONE: installazione pacchetti locali non riuscita" >&2
+        true
+    }
+else
+    echo "[2D] Nessun pacchetto locale da installare"
+fi
