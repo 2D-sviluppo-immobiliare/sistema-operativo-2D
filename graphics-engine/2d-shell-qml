@@ -282,11 +282,15 @@ def main() -> int:
             window.setGeometry(screen.geometry())
             print(f"[2D] geometria: {screen.geometry()}", flush=True)
         if "--fullscreen" in sys.argv:
-            # Nessuna decorazione e nessun bordo: la shell occupa tutto lo
-            # schermo, come deve fare il desktop di un sistema operativo.
+            # La shell e' il desktop, non una finestra qualsiasi: deve stare
+            # sempre SOTTO le altre. Con un window manager attivo una finestra
+            # davvero fullscreen resterebbe invece in cima e coprirebbe anche
+            # Chrome e il terminale. Frameless + stays-on-bottom + geometria
+            # dello schermo da' lo stesso risultato in entrambi i casi.
             window.setFlag(Qt.FramelessWindowHint, True)
-            window.setVisibility(QQuickWindow.FullScreen)
-            print("[2D] modalita' schermo intero", flush=True)
+            window.setFlag(Qt.WindowStaysOnBottomHint, True)
+            window.setGeometry(screen.geometry() if screen is not None else window.geometry())
+            print("[2D] shell a schermo intero, in fondo alla pila", flush=True)
         window.requestActivate()
 
     # Alla chiusura della sessione non deve restare vivo nessun processo figlio:
