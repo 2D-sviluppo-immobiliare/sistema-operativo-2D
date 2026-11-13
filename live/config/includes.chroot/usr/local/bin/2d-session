@@ -9,9 +9,18 @@
 set -u
 
 ENGINE="/opt/2d-os/engine"
-LOG_DIR="/var/log/2d-os"
 
-mkdir -p "${LOG_DIR}" 2>/dev/null || true
+# In una sessione utente /var/log non e' scrivibile: si usa la home, con
+# ripiego su /tmp. Il log serve a capire perche' una sessione non parte.
+LOG_DIR="/var/log/2d-os"
+if ! mkdir -p "${LOG_DIR}" 2>/dev/null || [ ! -w "${LOG_DIR}" ]; then
+    LOG_DIR="${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/2d-os"
+    if ! mkdir -p "${LOG_DIR}" 2>/dev/null || [ ! -w "${LOG_DIR}" ]; then
+        LOG_DIR="/tmp/2d-os-$(id -u)"
+        mkdir -p "${LOG_DIR}" 2>/dev/null || true
+    fi
+fi
+
 if [ -w "${LOG_DIR}" ]; then
     exec >>"${LOG_DIR}/session.log" 2>&1
 fi
