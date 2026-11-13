@@ -95,7 +95,20 @@ PAGE = """<!doctype html>
 <main>
   <div class="frame">
     <img id="screen" src="/stream" alt="2D OS"
-         onload="document.getElementById('status').textContent='live'">
+         onload="streamOk()" onerror="streamFailed()">
+  </div>
+  <div id="offline" style="display:none; text-align:center; max-width:520px;">
+    <p style="color:#e6c478; font-size:15px; margin:0 0 10px;">
+      Il flusso video non è raggiungibile
+    </p>
+    <p style="font-size:13px; opacity:.7; line-height:1.6; margin:0;">
+      Il server dell'anteprima risponde, ma la cattura dello schermo non arriva.
+      Controlla che il container della shell sia attivo:<br>
+      <code style="color:#c8d6e2;">docker ps | grep 2dos-live</code>
+    </p>
+    <p style="font-size:13px; opacity:.55; margin-top:14px;">
+      Nuovo tentativo automatico tra pochi secondi…
+    </p>
   </div>
 </main>
 <footer>
@@ -104,6 +117,32 @@ PAGE = """<!doctype html>
 </footer>
 <script>
 const img = document.getElementById('screen');
+const statusPill = document.getElementById('status');
+const offlineBox = document.getElementById('offline');
+
+let retryTimer = null;
+let loadedOnce = false;
+
+function streamOk() {
+  loadedOnce = true;
+  statusPill.textContent = 'live';
+  statusPill.style.borderColor = 'rgba(120,220,160,.5)';
+  statusPill.style.color = '#8fe0ac';
+  img.style.display = 'block';
+  offlineBox.style.display = 'none';
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+}
+
+function streamFailed() {
+  statusPill.textContent = 'offline';
+  statusPill.style.borderColor = 'rgba(230,120,110,.5)';
+  statusPill.style.color = '#e7988f';
+  img.style.display = 'none';
+  offlineBox.style.display = 'block';
+  retryTimer = setTimeout(() => {
+    img.src = '/stream?t=' + Date.now();
+  }, 4000);
+}
 async function send(ev, dbl) {
   const r = img.getBoundingClientRect();
   const x = Math.round((ev.clientX - r.left) * __W__ / r.width);
