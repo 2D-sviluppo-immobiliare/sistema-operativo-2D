@@ -213,12 +213,37 @@ Item {
     // La fotografia del cliente copre il paesaggio procedurale. Se l'asset non
     // e' presente (immagine costruita senza wallpaper) resta visibile la citta'
     // disegnata sopra, quindi il desktop non rimane mai vuoto.
+    //
+    // Due strati: il primo riempie lo schermo ritagliando (riempimento), il
+    // secondo mostra la fotografia INTERA. Su schermi non 16:9 il riempimento
+    // evita le bande nere e il secondo strato evita il taglio del soggetto:
+    // nessuna delle due cose e' possibile con un solo Image.
+    Item {
+        anchors.fill: parent
+        visible: wallpaper.status === Image.Ready
+
+        Image {
+            anchors.fill: parent
+            source: wallpaper.source
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            asynchronous: true
+            cache: true
+            opacity: 0.85
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#b3040e1a"
+        }
+    }
+
     Image {
         id: wallpaper
 
         anchors.fill: parent
         source: Qt.resolvedUrl("../../assets/wallpaper-villa.jpg")
-        fillMode: Image.PreserveAspectCrop
+        fillMode: Image.PreserveAspectFit
         smooth: true
         asynchronous: true
         cache: true
