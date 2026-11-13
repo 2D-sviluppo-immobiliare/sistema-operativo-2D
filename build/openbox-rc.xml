@@ -1,13 +1,91 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Configurazione openbox per la demo di 2D OS.
-  Il desktop 2D e' una finestra "below", senza decorazioni, a tutto schermo:
-  le applicazioni si aprono sopra e si chiudono normalmente.
+  Configurazione Openbox per 2D OS.
+
+  Architettura: la shell QML e' una finestra a tutto schermo senza decorazioni;
+  le applicazioni Linux esterne (xterm, Chrome, VS Code) sono finestre X11
+  normali e vengono gestite da Openbox, che fornisce barra del titolo,
+  spostamento, ridimensionamento e chiusura.
+
+  I margini riservano lo spazio occupato dai pannelli della shell, cosi' una
+  finestra massimizzata non copre la barra superiore, il launcher, la dock e il
+  system tray.
 -->
 <openbox_config xmlns="http://openbox.org/3.4/rc">
+  <resistance>
+    <strength>10</strength>
+    <screen_edge_strength>20</screen_edge_strength>
+  </resistance>
+
+  <focus>
+    <focusNew>yes</focusNew>
+    <followMouse>no</followMouse>
+    <focusLast>yes</focusLast>
+    <underMouse>no</underMouse>
+    <raiseOnFocus>yes</raiseOnFocus>
+  </focus>
+
+  <placement>
+    <policy>Smart</policy>
+    <center>yes</center>
+    <monitor>Primary</monitor>
+  </placement>
+
+  <theme>
+    <name>2D</name>
+    <titleLayout>NLIMC</titleLayout>
+    <keepBorder>yes</keepBorder>
+    <animateIconify>no</animateIconify>
+    <font place="ActiveWindow">
+      <name>DejaVu Sans</name>
+      <size>8</size>
+      <weight>bold</weight>
+    </font>
+    <font place="InactiveWindow">
+      <name>DejaVu Sans</name>
+      <size>8</size>
+      <weight>normal</weight>
+    </font>
+  </theme>
+
+  <!-- Spazio riservato ai pannelli della shell 2D. -->
+  <margins>
+    <top>48</top>
+    <left>112</left>
+    <bottom>88</bottom>
+    <right>4</right>
+  </margins>
+
+  <desktops>
+    <number>1</number>
+    <firstdesk>1</firstdesk>
+    <names>
+      <name>2D</name>
+    </names>
+    <popupTime>0</popupTime>
+  </desktops>
+
+  <keyboard>
+    <!--
+      Sezione volutamente vuota.
+
+      Alt+Tab e Alt+F4 NON vanno legati qui: li gestisce la shell QML per le
+      proprie finestre. Openbox li intercetterebbe a livello di window manager
+      e la shell non li vedrebbe mai; in piu' A-F4 chiuderebbe l'intera
+      sessione invece della sola finestra attiva.
+
+      Lasciando la sezione vuota Openbox non carica nemmeno i binding di
+      default, quindi ogni combinazione arriva all'applicazione.
+    -->
+  </keyboard>
+
   <applications>
+    <!-- La shell 2D non deve mai essere decorata ne' ridimensionata. -->
     <application name="2D OS">
       <decor>no</decor>
+      <maximized>no</maximized>
+      <layer>below</layer>
+      <desktop>1</desktop>
     </application>
   </applications>
 </openbox_config>

@@ -50,6 +50,18 @@ Item {
     scale: shown ? 1 : 0.97
     visible: shown || opacity > 0.01
 
+    // La tastiera deve arrivare al contenuto della finestra attiva: senza
+    // questo la calcolatrice riceve i clic ma non i tasti.
+    onShownChanged: {
+        if (shown)
+            win.focusContent()
+    }
+
+    function focusContent() {
+        if (bodyLoader.item)
+            bodyLoader.item.forceActiveFocus()
+    }
+
     Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
     Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
@@ -202,6 +214,7 @@ Item {
 
                 onPressed: function (mouse) {
                     win.raised()
+                    win.focusContent()
                     var point = win.mapToItem(null, mouse.x, mouse.y)
                     win.startGrab(point.x, point.y)
                 }
@@ -343,6 +356,8 @@ Item {
             clip: true
 
             Loader {
+                id: bodyLoader
+
                 anchors.fill: parent
                 sourceComponent: win.content
             }
@@ -356,6 +371,7 @@ Item {
             z: 3
             onPressed: function (mouse) {
                 win.raised()
+                win.focusContent()
                 mouse.accepted = false
             }
             onClicked: function (mouse) { mouse.accepted = false }

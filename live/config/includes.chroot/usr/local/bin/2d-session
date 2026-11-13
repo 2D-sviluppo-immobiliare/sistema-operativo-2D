@@ -21,6 +21,18 @@ echo "[2D] avvio sessione $(date -Iseconds)"
 export QML_XHR_ALLOW_FILE_READ=1
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-}"
 
+# Openbox gestisce le finestre X11 esterne: barra del titolo, spostamento,
+# ridimensionamento e chiusura. La shell QML gira a tutto schermo e resta
+# sotto; i margini riservati in rc.xml impediscono alle finestre massimizzate
+# di coprire i pannelli.
+if command -v openbox >/dev/null 2>&1; then
+    mkdir -p "${HOME}/.config/openbox" 2>/dev/null || true
+    [ -f "${HOME}/.config/openbox/rc.xml" ] || \
+        cp /etc/xdg/openbox/2d-rc.xml "${HOME}/.config/openbox/rc.xml" 2>/dev/null || true
+    openbox >/dev/null 2>&1 &
+    sleep 0.4
+fi
+
 if [ -r "${ENGINE}/2d-shell-qml" ]; then
     if python3 -c "import PySide6.QtQuick" >/dev/null 2>&1; then
         exec python3 "${ENGINE}/2d-shell-qml" --boot --fullscreen

@@ -1,0 +1,84 @@
+!! 2D OS - tema Openbox per le finestre esterne
+!!
+!! Openbox gestisce solo le applicazioni X11 esterne (terminale, browser,
+!! editor). Questo tema allinea la loro barra del titolo alla palette della
+!! shell: blu notte, testo chiaro, oro sui bordi attivi.
+
+border.width: 1
+padding.width: 4
+padding.height: 4
+window.handle.width: 0
+window.client.padding.width: 0
+window.client.padding.height: 0
+
+!! --- finestra attiva -----------------------------------------------------
+window.active.title.bg: flat solid
+window.active.title.bg.color: #0d2033
+window.active.title.separator.color: #1f4a6b
+window.active.label.text.color: #fafcfb
+window.active.label.text.font: shadow=n
+window.active.border.color: #1f4a6b
+window.active.handle.bg: flat solid
+window.active.handle.bg.color: #0d2033
+window.active.grip.bg: flat solid
+window.active.grip.bg.color: #17304a
+
+window.active.button.unpressed.bg: flat solid
+window.active.button.unpressed.bg.color: #0d2033
+window.active.button.unpressed.image.color: #cfe0ee
+window.active.button.hover.bg: flat solid
+window.active.button.hover.bg.color: #17304a
+window.active.button.hover.image.color: #ffffff
+window.active.button.pressed.bg: flat solid
+window.active.button.pressed.bg.color: #0a1a2b
+window.active.button.toggled.bg: flat solid
+window.active.button.toggled.bg.color: #17304a
+window.active.button.disabled.bg: flat solid
+window.active.button.disabled.bg.color: #0d2033
+window.active.button.disabled.image.color: #4d6274
+
+!! --- finestra inattiva ---------------------------------------------------
+window.inactive.title.bg: flat solid
+window.inactive.title.bg.color: #071724
+window.inactive.title.separator.color: #12283a
+window.inactive.label.text.color: #8fa9bd
+window.inactive.label.text.font: shadow=n
+window.inactive.border.color: #12283a
+window.inactive.handle.bg: flat solid
+window.inactive.handle.bg.color: #071724
+window.inactive.grip.bg: flat solid
+window.inactive.grip.bg.color: #0d1e2e
+
+window.inactive.button.unpressed.bg: flat solid
+window.inactive.button.unpressed.bg.color: #071724
+window.inactive.button.unpressed.image.color: #6a8296
+window.inactive.button.hover.bg: flat solid
+window.inactive.button.hover.bg.color: #12283a
+window.inactive.button.pressed.bg: flat solid
+window.inactive.button.pressed.bg.color: #0a1a2b
+window.inactive.button.disabled.bg: flat solid
+window.inactive.button.disabled.bg.color: #071724
+window.inactive.button.disabled.image.color: #3f5568
+
+!! --- menu contestuale ----------------------------------------------------
+menu.items.bg: flat solid
+menu.items.bg.color: #0a1c2d
+menu.items.text.color: #fafcfb
+menu.items.disabled.text.color: #5f7d94
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: #17304a
+menu.items.active.text.color: #ffffff
+menu.separator.color: #1f4a6b
+menu.border.color: #1f4a6b
+menu.border.width: 1
+menu.title.bg: flat solid
+menu.title.bg.color: #0d2033
+menu.title.text.color: #f9b234
+menu.title.text.justify: center
+
+!! --- indicatori di desktop (non usati: un solo desktop) ------------------
+osd.bg: flat solid
+osd.bg.color: #0a1c2d
+osd.label.text.color: #fafcfb
+osd.border.color: #1f4a6b
+osd.border.width: 1

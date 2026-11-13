@@ -66,6 +66,21 @@ class Apps(QObject):
         super().__init__()
         self._procs: dict[str, QProcess] = {}
 
+    def stop_all(self) -> None:
+        """Chiude le applicazioni avviate dalla shell.
+
+        Alla fine della sessione i figli non devono sopravvivere alla shell.
+        """
+        for key in list(self._procs):
+            proc = self._procs.pop(key)
+            if proc.state() == QProcess.NotRunning:
+                continue
+            print(f"[2D] arresto: {key}", flush=True)
+            proc.terminate()
+            if not proc.waitForFinished(1200):
+                proc.kill()
+                proc.waitForFinished(600)
+
     @Slot(str, result="QVariantMap")
     def info(self, key: str) -> dict:
         path = _which(CANDIDATES.get(key, []))

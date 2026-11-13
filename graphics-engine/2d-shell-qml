@@ -11,10 +11,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 
-from PySide6.QtCore import QLocale, QObject, QProcess, Qt, QUrl, Slot
+from PySide6.QtCore import QLocale, QObject, QProcess, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
@@ -42,6 +43,22 @@ class Launcher(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._procs: dict[str, QProcess] = {}
+
+    def stop_all(self) -> None:
+        """Chiude tutti i processi avviati dalla shell.
+
+        Va chiamata all'uscita: senza questo i figli resterebbero vivi e
+        orfani dopo la chiusura della sessione.
+        """
+        for key in list(self._procs):
+            proc = self._procs.pop(key)
+            if proc.state() == QProcess.NotRunning:
+                continue
+            print(f"[2D] arresto: {key}", flush=True)
+            proc.terminate()
+            if not proc.waitForFinished(1200):
+                proc.kill()
+                proc.waitForFinished(600)
 
     @Slot(str, str)
     def toggle(self, key: str, command: str) -> None:
@@ -271,6 +288,27 @@ def main() -> int:
             window.setVisibility(QQuickWindow.FullScreen)
             print("[2D] modalita' schermo intero", flush=True)
         window.requestActivate()
+
+    # Alla chiusura della sessione non deve restare vivo nessun processo figlio:
+    # terminali, browser ed editor appartengono alla shell che li ha avviati.
+    def shutdown() -> None:
+        print("[2D] chiusura sessione: arresto dei processi figli", flush=True)
+        launcher.stop_all()
+        apps.stop_all()
+        chat_client.stop()
+
+    app.aboutToQuit.connect(shutdown)
+
+    # La sessione puo' finire per logout o arresto del sistema: in quel caso
+    # arriva SIGTERM. Il gestore deve girare dentro il ciclo degli eventi,
+    # quindi un timer periodico restituisce il controllo a Python.
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+
+    heartbeat = QTimer()
+    heartbeat.setInterval(250)
+    heartbeat.timeout.connect(lambda: None)
+    heartbeat.start()
 
     return app.exec()
 

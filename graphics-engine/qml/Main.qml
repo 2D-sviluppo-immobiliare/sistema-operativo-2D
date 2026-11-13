@@ -47,13 +47,24 @@ Window {
         enabled: true
         focus: true
 
-        // Alt+Tab cambia finestra in primo piano. Senza un window manager
-        // esterno la combinazione arriva direttamente alla shell.
-        Keys.onPressed: function (event) {
-            if (event.key === Qt.Key_Tab && (event.modifiers & Qt.AltModifier)) {
-                event.accepted = true
-                desktopView.cycleWindow()
-            }
+        // Scorciatoie applicative: funzionano anche quando il focus e' dentro
+        // una finestra della shell, cosa che Keys.onPressed non garantisce.
+        Shortcut {
+            sequence: "Alt+Tab"
+            context: Qt.ApplicationShortcut
+            onActivated: desktopView.cycleWindow(false)
+        }
+
+        Shortcut {
+            sequence: "Alt+Shift+Tab"
+            context: Qt.ApplicationShortcut
+            onActivated: desktopView.cycleWindow(true)
+        }
+
+        Shortcut {
+            sequence: "Alt+F4"
+            context: Qt.ApplicationShortcut
+            onActivated: desktopView.closeTopWindow()
         }
 
         Desktop {

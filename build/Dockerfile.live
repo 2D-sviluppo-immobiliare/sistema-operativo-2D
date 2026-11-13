@@ -1,5 +1,5 @@
 # Ambiente per la demo "dal vivo" del desktop 2D nel browser.
-# Contiene Qt 6 / PySide6, il window manager e le app di prova.
+# Contiene Qt 6 / PySide6, Openbox per le finestre esterne e le app di prova.
 FROM debian:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,15 +16,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qt6-qpa-plugins \
         libqt6svg6 \
         qt6-svg-plugins \
-        ca-certificates \
         fonts-dejavu-core \
         xterm \
         x11-apps \
         x11-utils \
+        xdg-utils \
+        openbox \
+        dbus-x11 \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Nessun window manager: il desktop 2D disegna da se' cornici, barre del titolo
-# e pulsanti di chiusura delle finestre, quindi non serve delegare a openbox.
-CMD ["bash", "-c", "exec python3 /app/2d-shell-qml --boot"]
+# Openbox gestisce solo le finestre X11 esterne. La shell QML disegna da se'
+# barre del titolo e chiusure delle proprie finestre, e gira a tutto schermo
+# senza decorazioni.
+COPY openbox-rc.xml /etc/xdg/openbox/2d-rc.xml
+COPY openbox-2d.themerc /usr/share/themes/2D/openbox-3/themerc
+
+CMD ["bash", "-c", \
+     "mkdir -p /root/.config/openbox && \
+      cp /etc/xdg/openbox/2d-rc.xml /root/.config/openbox/rc.xml && \
+      openbox >/dev/null 2>&1 & \
+      sleep 1; \
+      exec python3 /app/2d-shell-qml --boot --fullscreen"]

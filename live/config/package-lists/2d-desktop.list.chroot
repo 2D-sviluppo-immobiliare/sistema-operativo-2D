@@ -75,3 +75,8 @@ ca-certificates
 # --- Finestre applicative avviate dalla dock ---
 xterm
 x11-utils
+
+# --- Window manager delle applicazioni esterne ---
+# La shell QML disegna i propri pannelli; Openbox gestisce solo le finestre
+# X11 esterne (terminale, browser, editor).
+openbox

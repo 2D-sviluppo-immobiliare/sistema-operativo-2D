@@ -121,7 +121,8 @@ Item {
     }
 
     // Alt+Tab: porta in cima la finestra visibile piu' in basso.
-    function cycleWindow() {
+    // Con "reverse" si scorre in senso opposto (Alt+Shift+Tab).
+    function cycleWindow(reverse) {
         var visibleOnes = []
         for (var i = 0; i < desktop.stack.length; i++) {
             var key = desktop.stack[i]
@@ -130,7 +131,31 @@ Item {
         }
         if (visibleOnes.length < 2)
             return
-        desktop.raise(visibleOnes[0])
+        if (reverse)
+            desktop.lower(visibleOnes[visibleOnes.length - 1])
+        else
+            desktop.raise(visibleOnes[0])
+    }
+
+    // Porta in fondo alla pila la finestra indicata: serve ad Alt+Shift+Tab.
+    function lower(id) {
+        var next = [id]
+        for (var i = 0; i < desktop.stack.length; i++) {
+            if (desktop.stack[i] !== id)
+                next.push(desktop.stack[i])
+        }
+        desktop.stack = next
+    }
+
+    // Chiude la finestra in primo piano (Alt+F4).
+    function closeTopWindow() {
+        for (var i = desktop.stack.length - 1; i >= 0; i--) {
+            var key = desktop.stack[i]
+            if (desktop.openState[key] && !desktop.minimizedState[key]) {
+                desktop.setOpen(key, false)
+                return
+            }
+        }
     }
 
     // --- ordine di sovrapposizione delle finestre ----------------------------

@@ -88,6 +88,19 @@ fi
 # --- Sessione grafica ---
 chmod 0755 "${INC}/usr/local/bin/2d-session" 2>/dev/null || true
 
+# --- Configurazione Openbox per le finestre esterne ---
+if [ -f "${SRC}/build/openbox-rc.xml" ]; then
+    log "Installo la configurazione Openbox"
+    mkdir -p "${INC}/etc/xdg/openbox"
+    cp -f "${SRC}/build/openbox-rc.xml" "${INC}/etc/xdg/openbox/2d-rc.xml"
+fi
+
+if [ -f "${SRC}/build/openbox-2d.themerc" ]; then
+    log "Installo il tema Openbox 2D"
+    mkdir -p "${INC}/usr/share/themes/2D/openbox-3"
+    cp -f "${SRC}/build/openbox-2d.themerc" "${INC}/usr/share/themes/2D/openbox-3/themerc"
+fi
+
 # Versione del sistema, leggibile da /etc/2d-os/release
 mkdir -p "${INC}/etc/2d-os"
 printf '%s\n' "${VERSION}" > "${INC}/etc/2d-os/release"
