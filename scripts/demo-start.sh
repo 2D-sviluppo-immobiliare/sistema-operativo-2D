@@ -79,10 +79,26 @@ else
 fi
 
 # --- 6. inoltro della porta in Codespaces (best effort) ---------------------
+# Dopo un riavvio del codespace il tunnel impiega qualche secondo a
+# registrare la porta: si ritenta invece di arrendersi al primo 404.
 if [ -n "${CODESPACE_NAME:-}" ]; then
-    gh codespace ports visibility "${PORT}:public" -c "${CODESPACE_NAME}" >/dev/null 2>&1 \
-        && echo "==> Porta ${PORT} impostata pubblica" \
-        || echo "==> Nota: la porta va inoltrata da VS Code (pannello Ports)"
+    published=""
+    attempt=0
+    while [ "${attempt}" -lt 8 ]; do
+        attempt=$((attempt + 1))
+        if gh codespace ports visibility "${PORT}:public" -c "${CODESPACE_NAME}" >/dev/null 2>&1; then
+            published="si"
+            break
+        fi
+        sleep 3
+    done
+
+    if [ -n "${published}" ]; then
+        echo "==> Porta ${PORT} pubblica sul tunnel Codespaces"
+    else
+        echo "==> Porta ${PORT} non ancora registrata dal tunnel."
+        echo "    In VS Code: pannello PORTS -> Forward a Port -> ${PORT} -> Public"
+    fi
 fi
 
 echo
