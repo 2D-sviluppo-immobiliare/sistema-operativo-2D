@@ -1,0 +1,43 @@
+{
+  "//": "Impostazioni VS Code per 2D OS su hardware senza accelerazione grafica.",
+  "//nota": "Riducono lavoro all'avvio, watcher e analisi Python su tutto il repository.",
+
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+
+  "workbench.enableExperiments": false,
+  "workbench.startupEditor": "none",
+  "workbench.list.smoothScrolling": false,
+  "workbench.editor.limit.enabled": true,
+  "workbench.editor.limit.value": 4,
+  "window.restoreWindows": "one",
+  "breadcrumbs.enabled": false,
+
+  "editor.smoothScrolling": false,
+  "editor.minimap.enabled": false,
+  "editor.cursorBlinking": "solid",
+  "editor.renderWhitespace": "none",
+  "editor.largeFileOptimizations": true,
+
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/live/chroot/**": true,
+    "**/live/binary/**": true,
+    "**/live/cache/**": true,
+    "**/.build/**": true,
+    "**/dist/**": true,
+    "**/vendor/**": true
+  },
+  "search.followSymlinks": false,
+
+  "git.autofetch": false,
+  "git.decorations.enabled": false,
+  "npm.autoDetect": "off",
+
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.indexing": false
+}

@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# 2d-code - avvia VS Code con le impostazioni adatte a un PC senza
+# accelerazione grafica.
+#
+# Su schede video come la Intel GMA 4 Series ogni tentativo di inizializzare
+# OpenGL fallisce e costa secondi di avvio: disattivare la GPU e' piu' veloce
+# che provare e fallire. Il limite di memoria del processo JavaScript evita
+# che Electron si espanda fino a mandare la macchina in swap.
+#
+set -u
+
+CODE=""
+for candidate in /usr/bin/code /usr/share/code/code /usr/bin/codium; do
+    [ -x "${candidate}" ] && { CODE="${candidate}"; break; }
+done
+
+if [ -z "${CODE}" ]; then
+    echo "2d-code: VS Code non e' installato" >&2
+    exit 1
+fi
+
+# Eseguire Electron come root richiede --no-sandbox; come utente normale no.
+EXTRA=""
+[ "$(id -u)" -eq 0 ] && EXTRA="--no-sandbox"
+
+exec "${CODE}" \
+    --disable-gpu \
+    --disable-gpu-compositing \
+    --disable-dev-shm-usage \
+    --js-flags="--max-old-space-size=1024" \
+    ${EXTRA} \
+    "$@"

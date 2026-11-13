@@ -21,6 +21,9 @@ CANDIDATES: dict[str, list[str]] = {
         "brave-browser",
     ],
     "code": [
+        # 2d-code aggiunge i flag adatti alle macchine senza accelerazione
+        # grafica: se c'e' va preferito all'eseguibile grezzo.
+        "2d-code",
         "code",
         "codium",
         "code-insiders",
