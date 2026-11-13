@@ -1,0 +1,103 @@
+#!/bin/sh
+#
+# 2d-tailscale - attiva o disattiva l'accesso alla rete privata Tailscale.
+#
+# L'immagine live include il pacchetto ma non lo avvia: il collegamento a una
+# rete privata e' una scelta dell'utente, non un comportamento predefinito.
+#
+# Uso:
+#   sudo 2d-tailscale on        avvia e mostra il link di autenticazione
+#   sudo 2d-tailscale off       esce dalla rete e ferma il servizio
+#   sudo 2d-tailscale status    stato attuale
+#   sudo 2d-tailscale ssh on    abilita anche l'accesso SSH via Tailscale
+#
+set -u
+
+SOCKET=/run/tailscale/tailscaled.sock
+STATE=/var/lib/tailscale/tailscaled.state
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "Serve root: usa 'sudo 2d-tailscale $*'" >&2
+        exit 1
+    fi
+}
+
+start_daemon() {
+    install -d -m 0755 /run/tailscale /var/lib/tailscale
+
+    if [ -S "${SOCKET}" ] && tailscale status >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "[2D] avvio del demone Tailscale"
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+        systemctl start tailscaled.service
+    else
+        tailscaled --state="${STATE}" --socket="${SOCKET}" >/var/log/2d-tailscaled.log 2>&1 &
+    fi
+
+    # il socket compare dopo qualche istante
+    i=0
+    while [ "${i}" -lt 20 ]; do
+        [ -S "${SOCKET}" ] && return 0
+        sleep 0.5
+        i=$((i + 1))
+    done
+    return 1
+}
+
+case "${1:-}" in
+    on)
+        need_root "$@"
+        if ! command -v tailscale >/dev/null 2>&1; then
+            echo "Tailscale non e' installato in questa immagine." >&2
+            exit 1
+        fi
+        start_daemon || { echo "demone non avviato" >&2; exit 1; }
+
+        shift
+        echo "[2D] richiesta di accesso alla rete privata"
+        echo "[2D] apri il link che segue e autentica questa macchina"
+        echo
+        exec tailscale up --hostname="2dos-$(hostname)" --accept-dns=false "$@"
+        ;;
+
+    off)
+        need_root "$@"
+        tailscale down 2>/dev/null || true
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop tailscaled.service 2>/dev/null || true
+        else
+            pkill -f tailscaled 2>/dev/null || true
+        fi
+        echo "[2D] disconnesso dalla rete privata"
+        ;;
+
+    status)
+        if [ ! -S "${SOCKET}" ]; then
+            echo "Tailscale non attivo."
+            exit 0
+        fi
+        tailscale status
+        echo
+        echo "Indirizzi di questa macchina:"
+        tailscale ip -4 2>/dev/null || true
+        ;;
+
+    ssh)
+        need_root "$@"
+        start_daemon || exit 1
+        shift
+        case "${1:-on}" in
+            on)  exec tailscale set --ssh=true ;;
+            off) exec tailscale set --ssh=false ;;
+            *)   echo "uso: 2d-tailscale ssh [on|off]" >&2; exit 2 ;;
+        esac
+        ;;
+
+    *)
+        sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+        exit 2
+        ;;
+esac

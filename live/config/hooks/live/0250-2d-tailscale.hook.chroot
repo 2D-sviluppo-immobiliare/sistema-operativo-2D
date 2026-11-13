@@ -1,0 +1,57 @@
+#!/bin/sh
+# 0250-2d-tailscale.hook.chroot
+#
+# Installa Tailscale nell'immagine live, senza pero' attivarlo all'avvio.
+#
+# Il pacchetto non e' nei repository Debian: si usa il repository ufficiale
+# Tailscale, verificato con la sua chiave GPG. Al termine il repository viene
+# rimosso, cosi' il sistema finale non ha sorgenti di terze parti configurate.
+#
+# L'accesso alla rete privata e' opt-in: si attiva a mano con
+#     sudo 2d-tailscale on
+# Nessuna chiave e' memorizzata nell'immagine.
+set -eu
+
+echo "[2D] Installazione Tailscale"
+
+KEYRING=/usr/share/keyrings/tailscale-archive-keyring.gpg
+LIST=/etc/apt/sources.list.d/tailscale.list
+
+# Il pacchetto curl potrebbe non essere presente: si usa wget, gia' richiesto
+# da live-build, con fallback su curl.
+fetch() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$1"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- "$1"
+    else
+        return 1
+    fi
+}
+
+install -d -m 0755 /usr/share/keyrings
+
+if fetch "https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg" > "${KEYRING}"; then
+    echo 'deb [signed-by='"${KEYRING}"'] https://pkgs.tailscale.com/stable/debian trixie main' \
+        > "${LIST}"
+
+    if apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tailscale; then
+        echo "[2D] Tailscale installato"
+    else
+        echo "[2D] ATTENZIONE: installazione di Tailscale non riuscita" >&2
+    fi
+
+    # Il sistema finale non deve conservare sorgenti di terze parti.
+    rm -f "${LIST}"
+    rm -f "${KEYRING}"
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+else
+    echo "[2D] ATTENZIONE: chiave Tailscale non scaricabile, pacchetto saltato" >&2
+fi
+
+# Il servizio non parte da solo: nessun collegamento alla rete privata
+# senza una richiesta esplicita dell'utente.
+systemctl disable tailscaled.service 2>/dev/null || true
+
+echo "[2D] Tailscale pronto (disattivato)"
